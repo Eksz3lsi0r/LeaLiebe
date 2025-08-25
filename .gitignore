@@ -1,0 +1,43 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# VS Code
+.vscode/
+.history/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Temp
+.tmp/
+tmp/
+temp/
+
+# Roblox/Studio artifacts
+*.rbxl
+*.rbxlx
+*.rbxm
+*.rbxmx
+build.rbxlx
+sourcemap.json
+
+# Wally/Aftman (Roblox package managers)
+Packages/
+wally.lock
+.wally/
+.aftman/
+
+# Rojo backups
+*.project.json.bak
+
+# OS/Editor miscellany
+Thumbs.db
+ehthumbs.db
+Icon?
+.Spotlight-V100
+.Trashes

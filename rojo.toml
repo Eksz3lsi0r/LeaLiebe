@@ -1,0 +1,27 @@
+return {
+	name = "LeaPopelEndlessRunner",
+	version = "0.1.0",
+	tree = {
+		ReplicatedStorage = {
+			Shared = {
+				Constants = "src/ReplicatedStorage/Shared/Constants.lua",
+			},
+			Remotes = true,
+		},
+		ServerScriptService = {
+			Main = "src/ServerScriptService/Main.server.lua",
+		},
+		StarterPlayer = {
+			StarterPlayerScripts = {
+				Client = "src/StarterPlayer/StarterPlayerScripts/Client.client.lua",
+			},
+		},
+		StarterGui = {
+			HUD = "src/StarterGui/HUD.client.lua",
+		},
+		Workspace = {
+			Tracks = true,
+			SpawnLocation = true,
+		}
+	}
+}
