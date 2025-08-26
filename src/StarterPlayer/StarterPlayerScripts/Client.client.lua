@@ -395,13 +395,8 @@ local function triggerShake(amp: number, duration: number?)
     if pg:GetAttribute("ScreenShake") == false then
         return
     end
-    -- convert a duration into an initial amplitude that decays to ~1% after duration
-    if duration and duration > 0 then
-        -- a = a0 * exp(-k t) => a0 such that at t=0 -> amp, so we just take amp
-        shakeAmp = math.max(shakeAmp, amp)
-    else
-        shakeAmp = math.max(shakeAmp, amp)
-    end
+    -- Note: we currently just bump amplitude; decay handled in RenderStepped
+    shakeAmp = math.max(shakeAmp, amp)
 end
 
 local function setupCamera()
@@ -475,6 +470,7 @@ task.spawn(setupCamera)
 local function shakeCrash()
     triggerShake(0.7, 0.25)
 end
+-- selene: allow(unused_variable)
 local function shakeHardLand()
     triggerShake(0.25, 0.15)
 end
@@ -1225,10 +1221,36 @@ GameOver.OnClientEvent:Connect(function()
         overlay:Destroy()
     end)
     menu.MouseButton1Click:Connect(function()
-        -- Logik für Hauptmenü
+        -- Öffne HUD-Hauptmenü und schließe Overlay
+        local pg = player:WaitForChild("PlayerGui")
+        local hud = pg:FindFirstChild("HUD") or pg:FindFirstChildWhichIsA("ScreenGui")
+        if hud and hud:IsA("ScreenGui") then
+            local menuP = hud:FindFirstChild("MenuPanel")
+            local shopP = hud:FindFirstChild("ShopPanel")
+            if shopP and shopP:IsA("Frame") then
+                shopP.Visible = false
+            end
+            if menuP and menuP:IsA("Frame") then
+                menuP.Visible = true
+            end
+        end
+        overlay:Destroy()
     end)
     shop.MouseButton1Click:Connect(function()
-        -- Logik für Shop
+        -- Öffne HUD-Shop und schließe Overlay
+        local pg = player:WaitForChild("PlayerGui")
+        local hud = pg:FindFirstChild("HUD") or pg:FindFirstChildWhichIsA("ScreenGui")
+        if hud and hud:IsA("ScreenGui") then
+            local menuP = hud:FindFirstChild("MenuPanel")
+            local shopP = hud:FindFirstChild("ShopPanel")
+            if menuP and menuP:IsA("Frame") then
+                menuP.Visible = false
+            end
+            if shopP and shopP:IsA("Frame") then
+                shopP.Visible = true
+            end
+        end
+        overlay:Destroy()
     end)
 end)
 

@@ -317,7 +317,19 @@ if not menuPanel then
 end
 
 menuBtn.MouseButton1Click:Connect(function()
-    menuPanel.Visible = not menuPanel.Visible
+    local makeVisible = not menuPanel.Visible
+    menuPanel.Visible = makeVisible
+    if makeVisible then
+        -- Schließe Shop und Accessibility, falls offen
+        local sp = (gui :: ScreenGui):FindFirstChild("ShopPanel")
+        if sp and sp:IsA("Frame") then
+            sp.Visible = false
+        end
+        local acc = (gui :: ScreenGui):FindFirstChild("AccessibilityPanel")
+        if acc and acc:IsA("Frame") then
+            acc.Visible = false
+        end
+    end
 end)
 
 -- Shop panel
@@ -390,7 +402,18 @@ if not shopPanel then
 end
 
 shopBtn.MouseButton1Click:Connect(function()
-    shopPanel.Visible = not shopPanel.Visible
+    local makeVisible = not shopPanel.Visible
+    shopPanel.Visible = makeVisible
+    if makeVisible then
+        -- Schließe Menü und Accessibility, falls offen
+        if menuPanel then
+            menuPanel.Visible = false
+        end
+        local acc = (gui :: ScreenGui):FindFirstChild("AccessibilityPanel")
+        if acc and acc:IsA("Frame") then
+            acc.Visible = false
+        end
+    end
 end)
 
 -- Lightweight toast for shop results
@@ -599,29 +622,3 @@ if EventAnnounce then
         end
     end)
 end
-
--- Funktion zum Erstellen von Schaltflächen im Hauptmenü
-local function createButton(text, position)
-    local button = Instance.new("TextButton")
-    button.Text = text
-    button.Position = position
-    button.Size = UDim2.new(0, 200, 0, 50)
-    button.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-    button.TextColor3 = Color3.fromRGB(0, 0, 0)
-    button.Parent = game.Players.LocalPlayer:WaitForChild("PlayerGui").ScreenGui
-
-    -- Logik für Schaltflächenaktionen
-    button.MouseButton1Click:Connect(function()
-        if text == "Shop" then
-            -- Logik für den Shop
-            print("Shop geöffnet")
-        elseif text == "Start" then
-            -- Logik für den Spielstart
-            print("Spiel gestartet")
-        end
-    end)
-end
-
--- Schaltflächen im Hauptmenü erstellen
-createButton("Start", UDim2.new(0.5, -100, 0.5, -25)) -- Start-Button
-createButton("Shop", UDim2.new(0.5, -100, 0.5, 25)) -- Shop-Button

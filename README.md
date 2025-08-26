@@ -1,14 +1,19 @@
-# Projekt-ToDo: LeaPopel Subway-Surfers-Style Endless Runner
+# Projekt-ToDo: LeaPopel — Subway‑Surfers‑Style Endless Runner
+Hinweis zu Steuerung/Konventionen
+ - Server ist autoritativ; HRP `SetNetworkOwner(nil)` beibehalten.
+# Projekt-ToDo: LeaPopel — Subway‑Surfers‑Style Endless Runner
 
-Diese Datei ist die zentrale ToDo-/Roadmap-Liste. Hake Punkte ab, ergänze kurze Status-Notizen (mit Datum), und verweise bei Bedarf auf relevante Dateien.
+Diese Datei ist die zentrale ToDo-/Roadmap-Liste. Hake Punkte ab, ergänze kurze Status‑Notizen (mit Datum), und verweise bei Bedarf auf relevante Dateien.
 
 Hinweis zu Steuerung/Konventionen
 - Spurwechsel: `LaneRequest(dir)` mit links=+1, rechts=-1 (bewusst invertiert auf dem Client).
-- HUD-Updates via `UpdateHUD` sind getaktet (~0,15s) und bündeln Felder.
+- HUD-Updates via `UpdateHUD` sind getaktet (~0,15 s) und bündeln Felder.
 - Server ist autoritativ; HRP `SetNetworkOwner(nil)` beibehalten.
 
-## Setup & Tooling
-- [x] Rojo Mappings gepflegt (`default.project.json`, `rojo.toml`)
+Glossar (Kurz)
+- HRP: HumanoidRootPart; NetworkOwner = nil (Server‑Authority)
+- Lanes: fixe X‑Offsets laut `Shared/Constants.lua` (aktuell −5/0/+5)
+- Segmente: `Seg_%04d` unter `Workspace/Tracks/<UserId>`
   - Stand: Struktur vorhanden; Tracks unter `Workspace/Tracks/<UserId>` mit `Seg_%04d`.
 - [x] VS Code Task für Rojo Serve (Auto-Start bei Ordner-Öffnen)
   - Stand: `tasks.json` startet Rojo automatisch.
@@ -17,6 +22,7 @@ Hinweis zu Steuerung/Konventionen
 
 ## Core Gameplay
 - [x] 3 Spuren X={-5,0,5}, Start Mitte
+  - CI-Versionen (Workflow): StyLua 2.0.2, Selene 0.27.1, Rojo 7.4.4.
   - Stand: `Shared/Constants.lua` (LANES).
 - [x] Server-autoritative Vorwärtsbewegung mit Beschleunigung/MaxSpeed
   - Stand: `Main.server.lua` (Heartbeat, Acceleration, MaxSpeed).
@@ -131,7 +137,8 @@ Zielwerte und Leitplanken für ein „AAA“-Gefühl (Subway‑Surfers‑ähnlic
   - [x] Lautstärken normalisiert (SFX-Mix über `Constants.AUDIO.SFXVolumes`)
     - 26.08.2025: Zentrale SFX-Lautstärken (`Master`, `Coin`, `Jump`, `Slide`, `Powerup`, `Crash`) eingeführt und im Client verdrahtet; harte Werte entfernt. Anpassung ohne Spielverhaltensänderung.
 - UI/UX
-  - [ ] HUD‑Feinschliff; Buttons Hauptmenü/Shop mit echter Logik.
+  - [x] HUD‑Feinschliff; Buttons Hauptmenü/Shop mit echter Logik.
+    - 26.08.2025: Menü/Shop-Toggles gegenseitig exklusiv, Accessibility-Panel integriert; GameOver-Overlay-Buttons öffnen direkt Hauptmenü bzw. Shop. Shop-Kauf via `ShopPurchaseRequest` mit Feedback (`ShopResult`).
   - [x] Accessibility: Farbkontrast, ScreenShake‑Toggle.
     - 26.08.2025: High-Contrast-Theme + Effekte/SFX + ScreenShake als Toggles im HUD (Accessibility-Panel). Zustände via PlayerGui-Attribute (`HighContrast`, `EffectsEnabled`, `ScreenShake`), Kamera-Shake dezent und performant (exponentielles Decay, RenderStepped, keine Allokationen pro Frame).
 
@@ -165,4 +172,18 @@ Tests in Studio ausführen (optional)
 - Clientkern: `src/StarterPlayer/StarterPlayerScripts/Client.client.lua`
 - Shared Konfig/Anims: `src/ReplicatedStorage/Shared/Constants.lua`, `src/ReplicatedStorage/Shared/Animations.lua`
 - Rojo Mapping: `default.project.json`, `rojo.toml`
+
+
+### Hinweis: DataStore-Throttling
+
+In Studio tauchte die Warnung auf: "DataStore request was added to queue. If request queue fills, further requests will be dropped. Try sending fewer requests." Ursache waren mehrere Save-Aufrufe (SetAsync) in kurzer Zeit bei GameOver/Shop/Shutdown.
+
+Maßnahmen im Code:
+- Pro-Spieler Save-Scheduler mit Mindestintervall und Coalescing (keine Spam-Writes).
+- Nicht-kritische Saves nutzen `requestSave` (throttled); nur PlayerRemoving/Shutdown nutzen `urgent`.
+- Leichtgewichtiges Autosave alle 60s (intern gedrosselt).
+
+Tipps für Produktion:
+- Auf `UpdateAsync` mit Retry/Backoff wechseln, wenn komplexere Merges nötig sind.
+- DataStore-Zugriff in Studio nur mit aktivierter API (Game Settings → Security) testen.
 

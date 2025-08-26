@@ -35,12 +35,15 @@ Ziel: KI-Agents schnell produktiv machen für diesen Roblox + Rojo Endless Runne
 - `ActionSync:FireClient(player,{action="Jump"|"Roll"})` — Server→Client Sync für lokale Animationen.
 - `UpdateHUD:FireClient(player,{distance,coins,speed,magnet?,shield?})` — getaktet ~0,15s + bei Events.
 - `CoinPickup`, `PowerupPickup`, `GameOver`, `RestartRequest` — SFX/Feedback/Reset.
+- Shop: `ShopPurchaseRequest:FireServer(itemId:string)` → `ShopResult:FireClient(player,{ok:boolean,msg:string,coins:number})`.
 
 ### Client-Muster
 - Input: A/D oder Pfeile → `LaneRequest`; W/Space → Jump; S → Roll; Mobile Swipes; `ContextActionService` bindet W/S (hohe Priorität, sink) und deaktiviert Default Controls.
 - Kamera: Scriptable Follow im `RenderStepped`.
 - Animationen: `Animate` deaktiviert; Animator lädt IDs aus `Shared/Animations.lua`; Run-Playback skaliert mit horizontaler Speed; Slide nutzt Platzhalter bis echte ID vorhanden.
 - HUD: Minimal-HUD in `StarterGui/HUD.client.lua`; Singleton via `EndlessHUD`-Attribut (Duplikate werden entfernt).
+ - Audio/Musik: SFX-IDs und Lautstärken zentral in `Shared/Constants.lua` (`AUDIO`). Musik-Loop + Ducking optional.
+ - Accessibility: Attribute am `PlayerGui` (z. B. `HighContrast`, `EffectsEnabled`, `ScreenShake`) steuern UI/FX.
 
 ### Powerups & Audio
 - Magnet zieht Coins im Radius (`POWERUPS.Magnet.{Duration,Radius}`); Shield nutzt `ShieldHits` (impact-verbrauchend).

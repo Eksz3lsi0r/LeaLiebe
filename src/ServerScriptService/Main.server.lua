@@ -160,6 +160,20 @@ type SaveBlob = { coins: number, best: number }
 local store = nil :: GlobalDataStore?
 local saveCache: { [number]: SaveBlob } = {}
 
+-- Save throttling to avoid filling the DataStore request queue
+type SaveMeta = { lastSave: number, inFlight: boolean, pending: boolean, scheduleToken: number? }
+local saveMeta: { [number]: SaveMeta } = {}
+local MIN_SAVE_INTERVAL = 20.0 -- seconds between non-urgent saves per user
+
+local function getSaveMeta(uid: number): SaveMeta
+    local meta = saveMeta[uid]
+    if not meta then
+        meta = { lastSave = 0, inFlight = false, pending = false, scheduleToken = nil }
+        saveMeta[uid] = meta
+    end
+    return meta
+end
+
 local function ensureStore(): GlobalDataStore?
     if store ~= nil then
         return store
@@ -223,6 +237,70 @@ local function savePlayerData(player: Player, reason: string?)
     end)
     if not ok then
         warn("[Server] Save failed for", player.Name, reason or "", err)
+    end
+end
+
+-- Schedule/Throttle wrapper around savePlayerData
+local function requestSave(player: Player, reason: string?, urgent: boolean?)
+    local uid = player.UserId
+    local meta = getSaveMeta(uid)
+    if urgent then
+        -- Bypass throttle for critical saves
+        if meta.inFlight then
+            meta.pending = true
+            return
+        end
+        meta.inFlight = true
+        savePlayerData(player, reason or "Urgent")
+        meta.inFlight = false
+        meta.lastSave = os.clock()
+        if meta.pending then
+            meta.pending = false
+            -- Run one more non-urgent save shortly after if something queued during flight
+            task.delay(0.25, function()
+                requestSave(player, "PostUrgent", false)
+            end)
+        end
+        return
+    end
+
+    -- Non-urgent: respect per-user interval and coalesce
+    if meta.inFlight then
+        meta.pending = true
+        return
+    end
+    local now = os.clock()
+    local delta = now - meta.lastSave
+    if delta >= MIN_SAVE_INTERVAL then
+        meta.inFlight = true
+        savePlayerData(player, reason or "ThrottledImmediate")
+        meta.inFlight = false
+        meta.lastSave = os.clock()
+        if meta.pending then
+            meta.pending = false
+            -- schedule one follow-up after the minimum interval window
+            local token = (meta.scheduleToken or 0) + 1
+            meta.scheduleToken = token
+            task.delay(MIN_SAVE_INTERVAL + 0.25, function()
+                if meta.scheduleToken ~= token then
+                    return
+                end
+                meta.scheduleToken = nil
+                requestSave(player, "FollowUp", false)
+            end)
+        end
+    else
+        -- Too soon: schedule a single save once interval has elapsed
+        local token = (meta.scheduleToken or 0) + 1
+        meta.scheduleToken = token
+        local waitFor = (MIN_SAVE_INTERVAL - delta) + 0.25
+        task.delay(waitFor, function()
+            if meta.scheduleToken ~= token then
+                return
+            end
+            meta.scheduleToken = nil
+            requestSave(player, reason or "Scheduled", false)
+        end)
     end
 end
 
@@ -829,8 +907,8 @@ local function stepPlayer(player: Player, dt: number)
                     s.Speed = 0
                     print("[Server] GameOver collision detected for player", player.Name)
                     GameOver:FireClient(player)
-                    -- Persist best distance and coins on GameOver
-                    savePlayerData(player, "GameOver")
+                    -- Persist best distance and coins on GameOver (throttled)
+                    requestSave(player, "GameOver", false)
                 end
             end
             break
@@ -853,8 +931,8 @@ local function stepPlayer(player: Player, dt: number)
                         s.Speed = 0
                         print("[Server] GameOver (Overhang) for player", player.Name)
                         GameOver:FireClient(player)
-                        -- Persist best distance and coins on GameOver
-                        savePlayerData(player, "GameOver")
+                        -- Persist best distance and coins on GameOver (throttled)
+                        requestSave(player, "GameOver", false)
                     end
                 end
                 break
@@ -1080,8 +1158,8 @@ ShopPurchaseRequest.OnServerEvent:Connect(function(player, payload)
                 shield = s.ShieldHits,
             })
             ShopResult:FireClient(player, { ok = true })
-            -- Persist coins after purchase
-            savePlayerData(player, "ShopPurchase")
+            -- Persist coins after purchase (throttled)
+            requestSave(player, "ShopPurchase", false)
         else
             ShopResult:FireClient(player, { ok = false, reason = "Zu wenig Coins" })
         end
@@ -1097,6 +1175,13 @@ local lastCharacterProcessed: { [Player]: Model? } = {}
 Players.PlayerAdded:Connect(function(player)
     task.spawn(function()
         loadPlayerData(player)
+    end)
+    -- Periodic autosave loop per player (lightweight, throttled internally)
+    task.spawn(function()
+        while player.Parent ~= nil do
+            task.wait(60)
+            requestSave(player, "Autosave", false)
+        end
     end)
     player.CharacterAdded:Connect(function(character)
         -- Prevent duplicate init for the same character instance
@@ -1126,8 +1211,11 @@ Players.PlayerAdded:Connect(function(player)
 end)
 
 Players.PlayerRemoving:Connect(function(player)
-    savePlayerData(player, "PlayerRemoving")
+    -- Urgent save on player leave
+    requestSave(player, "PlayerRemoving", true)
     cleanupPlayer(player)
+    saveMeta[player.UserId] = nil
+    saveCache[player.UserId] = nil
 end)
 
 -- Main loop
@@ -1139,8 +1227,13 @@ end)
 
 -- Save all players on server shutdown (BindToClose)
 game:BindToClose(function()
-    -- Attempt to save each player's data once
+    -- Attempt to save each player's data once (urgent), slightly staggered
+    local i = 0
     for player, _ in pairs(state) do
-        savePlayerData(player, "Shutdown")
+        local delayS = (i % 5) * 0.2
+        task.delay(delayS, function()
+            requestSave(player, "Shutdown", true)
+        end)
+        i += 1
     end
 end)
