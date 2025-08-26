@@ -28,22 +28,43 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-
 
-      - name: Install StyLua 0.20.1
+      - name: Install StyLua 2.0.2
         run: |
-          if ! command -v stylua >/dev/null 2>&1; then
-            cargo install stylua --version 0.20.1
+          set -euo pipefail
+          WANT=2.0.2
+          if command -v stylua >/dev/null 2>&1; then
+            HAVE=$(stylua --version | awk '{print $2}') || HAVE=""
+          else
+            HAVE=""
+          fi
+          if [ "$HAVE" != "$WANT" ]; then
+            cargo install stylua --version "$WANT" --force
           fi
 
       - name: Install Selene 0.27.1
         run: |
-          if ! command -v selene >/dev/null 2>&1; then
-            cargo install selene --version 0.27.1
+          set -euo pipefail
+          WANT=0.27.1
+          if command -v selene >/dev/null 2>&1; then
+            HAVE=$(selene --version | awk '{print $2}') || HAVE=""
+          else
+            HAVE=""
+          fi
+          if [ "$HAVE" != "$WANT" ]; then
+            cargo install selene --version "$WANT" --force
           fi
 
       - name: Install Rojo 7.4.4 (for sourcemap)
         run: |
-          if ! command -v rojo >/dev/null 2>&1; then
-            cargo install rojo --version 7.4.4
+          set -euo pipefail
+          WANT=7.4.4
+          if command -v rojo >/dev/null 2>&1; then
+            HAVE=$(rojo --version | awk '{print $2}') || HAVE=""
+          else
+            HAVE=""
+          fi
+          if [ "$HAVE" != "$WANT" ]; then
+            cargo install rojo --version "$WANT" --force
           fi
 
       - name: Stylua check
