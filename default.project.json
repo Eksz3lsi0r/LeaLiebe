@@ -32,5 +32,10 @@
         "$className": "Folder"
   }
     }
+    ,
+    "tests": {
+      "$className": "Folder",
+      "$path": "tests"
+    }
   }
 }

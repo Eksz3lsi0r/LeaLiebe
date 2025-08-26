@@ -10,11 +10,10 @@ local Animations = {
     Walk = 507777826, -- alias, falls irgendwo Walk referenziert wird
     Jump = 507765000, -- R15 Jump
     Fall = 507767968, -- R15 Fall
-    -- Slide (vormals Roll): Platzhalter-Animation (Climb), bis eine eigene/zugelassene Slide-Animation genutzt werden kann.
-    -- Hinweis: Eine gefundene Creator-Store-ID (z.B. 9890071351) erfordert Zugriffsfreigabe für die Experience
-    -- (Studio: Output-Link "Click to share access" nutzen) oder ein eigenes, hochgeladenes Asset.
-    -- Für stabile Läufe setzen wir vorerst den Platzhalter:
-    Slide = 507765644,
+    -- Slide (vormals Roll): Eigene, bereitgestellte Slide-Animation (selfmade).
+    -- Hinweis: Stelle sicher, dass die Experience Zugriff auf das Asset hat (Studio-Output: "Click to share access").
+    -- Fallback-Mechanik bleibt bestehen: Wenn das Asset nicht geladen werden kann, wird Slide clientseitig ausgelassen.
+    Slide = 128234664490731,
 }
 
 return Animations

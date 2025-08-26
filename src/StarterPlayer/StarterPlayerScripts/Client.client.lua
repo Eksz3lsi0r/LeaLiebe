@@ -17,12 +17,20 @@ local PowerupPickup = Remotes:FindFirstChild("PowerupPickup") :: RemoteEvent?
 local RestartRequest = Remotes:WaitForChild("RestartRequest") :: RemoteEvent
 local ActionRequest = Remotes:WaitForChild("ActionRequest") :: RemoteEvent
 local ActionSync = Remotes:FindFirstChild("ActionSync") :: RemoteEvent?
+local EventAnnounce = Remotes:FindFirstChild("EventAnnounce") :: RemoteEvent?
 
 -- Shared roll window across closures so server-driven Roll (ActionSync) can inform animator checks
 local rollingUntilShared = 0.0
 
 -- Simple SFX helper available to all scopes
 local function playSfx(ids: { number }?, name: string, volume: number)
+    -- Accessibility: allow disabling effects/sounds via PlayerGui attribute
+    local okGui, pg = pcall(function()
+        return player:WaitForChild("PlayerGui")
+    end)
+    if okGui and pg and pg:GetAttribute("EffectsEnabled") == false then
+        return
+    end
     if not ids or #ids == 0 then
         return
     end
@@ -52,16 +60,122 @@ local function playSfx(ids: { number }?, name: string, volume: number)
     end
 end
 
-local Animations = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Animations")) :: {
-    Run: number?,
-    Jump: number?,
-    Fall: number?,
-    Slide: number?,
-    Walk: number?,
-}
+type AnimTable = { Run: number?, Jump: number?, Fall: number?, Slide: number?, Walk: number? }
+local Animations = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Animations")) :: AnimTable
 local Constants = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Constants")) :: any
+-- Music ducking hooks (assigned by music controller below)
+local music_onGameOverRef: (() -> ())? = nil
+local music_onPowerupRef: (() -> ())? = nil
+
+-- Background music controller (loop + ducking)
+do
+    local musicSound: Sound? = nil
+    local lastDuckUntil = 0.0
+    local baseVolume = ((Constants.AUDIO and Constants.AUDIO.MusicVolume) or 0.45)
+    local function buildAssetUri(idNumber: number?): string
+        if not idNumber or idNumber == 0 then
+            return ""
+        end
+        return string.format("rbxassetid://%d", idNumber)
+    end
+    local function ensureMusic()
+        if musicSound and musicSound.Parent then
+            return musicSound
+        end
+        -- Respect EffectsEnabled toggle: if disabled, do not create music
+        local okGui, pg = pcall(function()
+            return player:WaitForChild("PlayerGui")
+        end)
+        if okGui and pg and pg:GetAttribute("EffectsEnabled") == false then
+            return nil
+        end
+        local ids = (Constants.AUDIO and Constants.AUDIO.MusicLoopIds) or {}
+        for _, id in ipairs(ids) do
+            if typeof(id) == "number" and id > 0 then
+                local s = Instance.new("Sound")
+                s.Name = "BG_Music"
+                s.SoundId = buildAssetUri(id)
+                s.Looped = true
+                s.Volume = baseVolume
+                s.RollOffMaxDistance = 100000 -- ensure no attenuation
+                s.Parent = SoundService
+                local ok = pcall(function()
+                    SoundService:PlayLocalSound(s)
+                end)
+                if ok then
+                    musicSound = s
+                    return musicSound
+                else
+                    s:Destroy()
+                end
+            end
+        end
+        return nil
+    end
+
+    local function tweenVolume(target: number, duration: number)
+        local s = musicSound
+        if not s or not s.Parent then
+            return
+        end
+        -- simple manual tween to avoid services; small and allocation-light
+        local startV = s.Volume
+        local t0 = os.clock()
+        if duration <= 0 then
+            s.Volume = target
+            return
+        end
+        task.spawn(function()
+            while s and s.Parent do
+                local t = (os.clock() - t0) / duration
+                if t >= 1 then
+                    s.Volume = target
+                    break
+                end
+                local v = startV + (target - startV) * t
+                s.Volume = v
+                RunService.Heartbeat:Wait()
+            end
+        end)
+    end
+
+    local function duckTemp(factor: number, fadeOut: number, fadeIn: number, hold: number)
+        local s = ensureMusic()
+        if not s then
+            return
+        end
+        local minVol = baseVolume * math.clamp(factor, 0, 1)
+        tweenVolume(minVol, fadeOut)
+        lastDuckUntil = os.clock() + (hold or 0)
+        task.delay((hold or 0), function()
+            -- only fade in if no newer duck extended the timer
+            if os.clock() >= lastDuckUntil then
+                tweenVolume(baseVolume, fadeIn)
+            end
+        end)
+    end
+
+    -- Start music once HUD exists or shortly after script init
+    task.defer(function()
+        ensureMusic()
+    end)
+
+    -- Hooks
+    local function onGameOver()
+        local cfg = (Constants.AUDIO and Constants.AUDIO.MusicDuck) or {}
+        duckTemp(cfg.GameOver or 0.35, cfg.FadeOut or 0.18, cfg.FadeIn or 0.30, 9999) -- remain ducked
+    end
+    local function onPowerup()
+        local cfg = (Constants.AUDIO and Constants.AUDIO.MusicDuck) or {}
+        duckTemp(cfg.Powerup or 0.70, cfg.FadeOut or 0.18, cfg.FadeIn or 0.30, cfg.PowerupHold or 1.2)
+    end
+    -- Assign to outer references
+    music_onGameOverRef = onGameOver
+    music_onPowerupRef = onPowerup
+end
 
 -- Lane-Infos und clientseitige Visualisierung des Spurwechsels
+-- Wichtige Konvention: links=+1, rechts=-1 (Server erwartet diese Richtung)
 local LANES: { number } = (Constants and Constants.LANES) or { -5, 0, 5 }
 local targetLaneIndex: number = 2 -- Start in der Mitte
 -- Eff. seitliche Visualgeschwindigkeit: entspricht Server (LaneSwitchSpeed * LaneSwitchFactor)
@@ -71,6 +185,55 @@ local laneSwitchSpeed: number = (
 )
 -- Prädizierte X-Position, der die Kamera lateral folgt (Z/Y von HRP)
 local predictedX: number? = nil
+
+-- VFX (clientseitig) für Powerups
+local magnetEmitter: ParticleEmitter? = nil
+local shieldField: ForceField? = nil
+
+local function ensureVFX()
+    local char = player.Character or player.CharacterAdded:Wait()
+    local hrp = char:FindFirstChild("HumanoidRootPart") :: BasePart?
+    if not hrp then
+        return
+    end
+    if not magnetEmitter then
+        -- Erzeuge einen dezenten blauen Partikelring für Magnet
+        local att = hrp:FindFirstChild("VFX_Magnet") :: Attachment?
+        if not att then
+            att = Instance.new("Attachment")
+            att.Name = "VFX_Magnet"
+            att.Parent = hrp
+        end
+        local pe = Instance.new("ParticleEmitter")
+        pe.Name = "MagnetPE"
+        pe.Parent = att
+        pe.Enabled = false
+        pe.Rate = 10
+        pe.Lifetime = NumberRange.new(0.4, 0.8)
+        pe.Speed = NumberRange.new(0, 0)
+        pe.Rotation = NumberRange.new(0, 360)
+        pe.RotSpeed = NumberRange.new(40, 80)
+        pe.SpreadAngle = Vector2.new(360, 360)
+        pe.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.25), NumberSequenceKeypoint.new(1, 0.0) })
+        pe.Color = ColorSequence.new(Color3.fromRGB(80, 180, 255))
+        pe.LightInfluence = 0
+        pe.LockedToPart = false
+        magnetEmitter = pe
+    end
+    if not shieldField then
+        -- Klassischer ForceField-Glanz für Schild
+        local ff = Instance.new("ForceField")
+        ff.Visible = false
+        ff.Parent = char
+        shieldField = ff
+    end
+end
+
+-- Bei Respawn VFX-Referenzen zurücksetzen (werden lazy neu erstellt)
+player.CharacterAdded:Connect(function()
+    magnetEmitter = nil
+    shieldField = nil
+end)
 
 -- Input: A/D or Left/Right to switch lanes
 local function onInputBegan(input: InputObject, gpe: boolean)
@@ -122,6 +285,95 @@ do
     pcall(function()
         ContextActionService:BindActionAtPriority("Endless_JumpOnW", handleJumpAction, false, 2000, Enum.KeyCode.W)
         ContextActionService:BindActionAtPriority("Endless_RollOnS", handleRollAction, false, 2000, Enum.KeyCode.S)
+
+        -- Gamepad-Unterstützung: A=Jump, B=Roll, DPad/Thumbstick links/rechts = Lane
+        -- Hinweis: Spurwechsel-Konvention: links=+1, rechts=-1 (bewusst invertiert)
+        local function handleLaneLeftGP(_name: string, state: Enum.UserInputState, _input: InputObject)
+            if state == Enum.UserInputState.Begin then
+                LaneRequest:FireServer(1) -- links
+                targetLaneIndex = math.clamp(targetLaneIndex + 1, 1, #LANES)
+            end
+            return Enum.ContextActionResult.Sink
+        end
+        local function handleLaneRightGP(_name: string, state: Enum.UserInputState, _input: InputObject)
+            if state == Enum.UserInputState.Begin then
+                LaneRequest:FireServer(-1) -- rechts
+                targetLaneIndex = math.clamp(targetLaneIndex - 1, 1, #LANES)
+            end
+            return Enum.ContextActionResult.Sink
+        end
+        ContextActionService:BindActionAtPriority(
+            "Endless_Jump_GP",
+            handleJumpAction,
+            false,
+            2000,
+            Enum.KeyCode.ButtonA
+        )
+        ContextActionService:BindActionAtPriority(
+            "Endless_Roll_GP",
+            handleRollAction,
+            false,
+            2000,
+            Enum.KeyCode.ButtonB
+        )
+        ContextActionService:BindActionAtPriority(
+            "Endless_LaneLeft_GP",
+            handleLaneLeftGP,
+            false,
+            2000,
+            Enum.KeyCode.DPadLeft
+        )
+        ContextActionService:BindActionAtPriority(
+            "Endless_LaneRight_GP",
+            handleLaneRightGP,
+            false,
+            2000,
+            Enum.KeyCode.DPadRight
+        )
+
+        -- Analoges Lane-Switching über linken Stick (Thumbstick1) mit Hysterese (Edge-Trigger)
+        local lastStickSign = 0 -- -1 = rechts, +1 = links, 0 = neutral
+        local threshold = 0.45
+        local function handleLaneStickGP(_name: string, state: Enum.UserInputState, input: InputObject)
+            -- Wir reagieren auf Begin/Change; analoger Wert in input.Position.X
+            if state ~= Enum.UserInputState.Begin and state ~= Enum.UserInputState.Change then
+                return Enum.ContextActionResult.Sink
+            end
+            local pos = input and input.Position or Vector3.new()
+            local x = pos.X
+            local sign = 0
+            if x <= -threshold then
+                sign = -1 -- rechts (gemäß Konvention)
+            elseif x >= threshold then
+                sign = 1 -- links
+            end
+            if sign == 0 then
+                -- Zurück zur Neutralzone -> nächsten Edge erlauben
+                if lastStickSign ~= 0 then
+                    lastStickSign = 0
+                end
+                return Enum.ContextActionResult.Sink
+            end
+            if sign ~= lastStickSign then
+                -- Edge-Trigger: einmaliger Spurwechsel pro Auslenkung
+                if sign == 1 then
+                    LaneRequest:FireServer(1) -- links
+                    targetLaneIndex = math.clamp(targetLaneIndex + 1, 1, #LANES)
+                else -- sign == -1
+                    LaneRequest:FireServer(-1) -- rechts
+                    targetLaneIndex = math.clamp(targetLaneIndex - 1, 1, #LANES)
+                end
+                lastStickSign = sign
+            end
+            return Enum.ContextActionResult.Sink
+        end
+        ContextActionService:BindActionAtPriority(
+            "Endless_LaneStick_GP",
+            handleLaneStickGP,
+            false,
+            2000,
+            Enum.KeyCode.Thumbstick1
+        )
     end)
 end
 
@@ -258,6 +510,7 @@ local function setupAnimator()
     local runGraceUntil = 0.0 -- Grace nach Landung/Running, bevor wir Jump/Fall hart stoppen
     local jumpGraceUntil = 0.0 -- Grace direkt nach Jump-Start, damit Jump nicht sofort am Boden abgebrochen wird
     local rollingUntil = 0.0 -- während dieser Zeit darf Run/Fall Roll nicht übersteuern
+    local airborneAt = 0.0 -- Zeitpunkt des Übergangs in die Luft (Freefall), um Fall verzögert zu starten
     local function load(name: string, id: number?, opts: { loop: boolean?, priority: Enum.AnimationPriority? }?)
         if not id or id == 0 then
             return
@@ -328,7 +581,8 @@ local function setupAnimator()
             jumpGraceUntil = os.clock() + 0.3
             play("Jump", 0.05, true)
         elseif new == Enum.HumanoidStateType.Freefall then
-            play("Fall", 0.05, true)
+            -- Starte Fall nicht sofort, sondern merke Zeitpunkt für sanften Delay
+            airborneAt = os.clock()
         elseif new == Enum.HumanoidStateType.Landed then
             -- Ensure fall/jump stop immediately on landing
             if tracks["Fall"] then
@@ -338,9 +592,11 @@ local function setupAnimator()
                 tracks["Jump"]:Stop(0.05)
             end
             runGraceUntil = os.clock() + 0.3
+            airborneAt = 0
             play("Run", 0.05, true)
         elseif new == Enum.HumanoidStateType.Running or new == Enum.HumanoidStateType.RunningNoPhysics then
             runGraceUntil = os.clock() + 0.3
+            airborneAt = 0
             play("Run", 0.05, true)
         elseif new == Enum.HumanoidStateType.Seated then
             -- keep run stopped when seated
@@ -350,7 +606,7 @@ local function setupAnimator()
         end
     end)
 
-    -- drive run animation by horizontal speed and adjust playback speed (with smoothing)
+    -- drive run animation by forward (Z-axis) speed and adjust playback speed (configurable, smoothed)
     local lastPos: Vector3? = nil
     local smoothedSpeed = 0.0
     RunService.RenderStepped:Connect(function(dt)
@@ -365,12 +621,14 @@ local function setupAnimator()
         local speed = 0
         if lastPos then
             local delta = pos - lastPos
-            speed = Vector3.new(delta.X, 0, delta.Z).Magnitude / math.max(dt, 1 / 240)
+            -- Nur Vorwärtsgeschwindigkeit (Z), kein seitliches Lerp (X) einbeziehen
+            speed = math.abs(delta.Z) / math.max(dt, 1 / 240)
         end
         lastPos = pos
 
         -- Exponential smoothing to avoid jitter from replication timing
-        local alpha = math.clamp(dt * 5, 0, 1) -- ~200ms time constant
+        local tau = (Constants.ANIMATION and Constants.ANIMATION.RunPlayback.SmoothTau) or 0.2
+        local alpha = math.clamp(dt / math.max(tau, 1e-3), 0, 1)
         smoothedSpeed = smoothedSpeed + (speed - smoothedSpeed) * alpha
 
         if hum.FloorMaterial ~= Enum.Material.Air then
@@ -401,11 +659,19 @@ local function setupAnimator()
                 play("Run", 0.06)
             end
 
-            -- Update run playback speed smoothly (baseline ~28 studs/s -> 1.0)
+            -- Update run playback speed smoothly per Constants.ANIMATION.RunPlayback
             local runTrack = tracks["Run"]
             if runTrack and runTrack.IsPlaying then
-                local target = math.clamp(smoothedSpeed / 28, 0.8, 1.8)
-                if math.abs((lastRunPlayback or 1) - target) > 0.05 then
+                local cfg = (Constants.ANIMATION and Constants.ANIMATION.RunPlayback) or {}
+                local speedAt1 = cfg.SpeedAtRate1 or 28
+                local exp = cfg.Exponent or 1.0
+                local minR = cfg.MinRate or 0.9
+                local maxR = cfg.MaxRate or 1.8
+                local thr = cfg.ChangeThreshold or 0.03
+                local ratio = smoothedSpeed / math.max(speedAt1, 0.001)
+                local target = math.pow(math.clamp(ratio, 0.01, 10), exp)
+                target = math.clamp(target, minR, maxR)
+                if math.abs((lastRunPlayback or 1) - target) > thr then
                     runTrack:AdjustSpeed(target)
                     lastRunPlayback = target
                 end
@@ -418,8 +684,12 @@ local function setupAnimator()
             end
             local jumpPlaying = tracks["Jump"] and tracks["Jump"].IsPlaying or false
             local fallPlaying = tracks["Fall"] and tracks["Fall"].IsPlaying or false
+            local now = os.clock()
+            -- Starte Fall erst nach kurzem Luft-Zeitpuffer, um Mikroflicker zu vermeiden
             if not jumpPlaying and not fallPlaying then
-                play("Fall", 0.05, true)
+                if airborneAt > 0 and (now - airborneAt) >= 0.08 then
+                    play("Fall", 0.05, true)
+                end
             end
         end
     end)
@@ -466,21 +736,7 @@ local function setupAnimator()
             end
         end
     end)
-    RunService.RenderStepped:Connect(function()
-        -- Wenn Slide abgelaufen ist und wir am Boden sind, zurück zu Run, falls nicht schon aktiv
-        if os.clock() >= math.max(rollingUntil, rollingUntilShared) then
-            if hum.FloorMaterial ~= Enum.Material.Air then
-                -- Sicherstellen, dass evtl. hängen gebliebener Slide-Track gestoppt ist
-                if tracks["Slide"] and tracks["Slide"].IsPlaying then
-                    tracks["Slide"]:Stop(0.05)
-                end
-                local runTrack = tracks["Run"]
-                if runTrack and not runTrack.IsPlaying then
-                    play("Run", 0.06)
-                end
-            end
-        end
-    end)
+    -- Slide-Ende-Check wird im bestehenden RenderStepped (Playback/State) mit erledigt
 
     -- Serverseitige ActionSync-Events direkt im Animator-Context spiegeln (damit wir Zugriff auf Tracks/Play haben)
     if ActionSync then
@@ -504,7 +760,13 @@ local function setupAnimator()
                 if tracks["Slide"] then
                     play("Slide", 0.05, true)
                 end
-                playSfx((Constants.AUDIO and Constants.AUDIO.SlideSoundIds) or {}, "SlideSFX", 0.6)
+                local vcfg = (Constants.AUDIO and Constants.AUDIO.SFXVolumes) or {}
+                local vMaster = (vcfg.Master or 1.0)
+                playSfx(
+                    (Constants.AUDIO and Constants.AUDIO.SlideSoundIds) or {},
+                    "SlideSFX",
+                    (vcfg.Slide or 0.6) * vMaster
+                )
             elseif action == "Jump" then
                 rollingUntil = 0
                 rollingUntilShared = 0
@@ -513,7 +775,13 @@ local function setupAnimator()
                 end
                 jumpGraceUntil = os.clock() + 0.3
                 play("Jump", 0.05, true)
-                playSfx((Constants.AUDIO and Constants.AUDIO.JumpSoundIds) or {}, "JumpSFX", 0.6)
+                local vcfg = (Constants.AUDIO and Constants.AUDIO.SFXVolumes) or {}
+                local vMaster = (vcfg.Master or 1.0)
+                playSfx(
+                    (Constants.AUDIO and Constants.AUDIO.JumpSoundIds) or {},
+                    "JumpSFX",
+                    (vcfg.Jump or 0.6) * vMaster
+                )
             end
         end)
     end
@@ -528,6 +796,7 @@ local cachedCoins: TextLabel? = nil
 local cachedSpeed: TextLabel? = nil
 local cachedMagnet: TextLabel? = nil
 local cachedShield: TextLabel? = nil
+local cachedEvent: TextLabel? = nil
 
 -- Ensure only one HUD exists at any time (singleton)
 local function enforceSingleHUD()
@@ -611,6 +880,7 @@ local function ensureHUD(): ScreenGui
     makeLabel("Speed", UDim2.fromOffset(20, 120)).Text = "0"
     makeLabel("Magnet", UDim2.fromOffset(20, 170)).Text = ""
     makeLabel("Shield", UDim2.fromOffset(20, 220)).Text = ""
+    makeLabel("Event", UDim2.fromOffset(20, 270)).Text = ""
 
     cachedHUD = hud
     cachedDist = hud:FindFirstChild("Distance") :: TextLabel?
@@ -618,6 +888,7 @@ local function ensureHUD(): ScreenGui
     cachedSpeed = hud:FindFirstChild("Speed") :: TextLabel?
     cachedMagnet = hud:FindFirstChild("Magnet") :: TextLabel?
     cachedShield = hud:FindFirstChild("Shield") :: TextLabel?
+    cachedEvent = hud:FindFirstChild("Event") :: TextLabel?
     return hud
 end
 
@@ -664,15 +935,20 @@ local function resolveLabels()
     if not (cachedShield and cachedShield.Parent == hud) then
         cachedShield = hud:FindFirstChild("Shield") :: TextLabel?
     end
+    if not (cachedEvent and cachedEvent.Parent == hud) then
+        cachedEvent = hud:FindFirstChild("Event") :: TextLabel?
+    end
 end
 
 UpdateHUD.OnClientEvent:Connect(function(payload)
-    print(
-        "[Client] UpdateHUD received",
-        payload and payload.distance,
-        payload and payload.coins,
-        payload and payload.speed
-    )
+    if Constants.DEBUG_LOGS then
+        print(
+            "[Client] UpdateHUD received",
+            payload and payload.distance,
+            payload and payload.coins,
+            payload and payload.speed
+        )
+    end
     resolveLabels()
     local hud = resolveHUD()
     if not hud then
@@ -699,7 +975,30 @@ UpdateHUD.OnClientEvent:Connect(function(payload)
     end
     if cachedShield and cachedShield:IsA("TextLabel") then
         local hits = payload.shield or 0
-        cachedShield.Text = hits > 0 and string.format("Schild: %d", hits) or ""
+        local secs = math.max(0, (payload.shieldTime or 0))
+        if secs > 0 then
+            cachedShield.Text = string.format("Schild: %.0fs", secs)
+        else
+            cachedShield.Text = hits > 0 and string.format("Schild: %d", hits) or ""
+        end
+    end
+    if cachedEvent and cachedEvent:IsA("TextLabel") then
+        local secs = math.max(0, (payload.doubleCoins or 0))
+        cachedEvent.Text = secs > 0 and string.format("Double Coins: %.0fs", secs) or ""
+    end
+
+    -- VFX-Toggling (clientseitig, basierend auf servergetakteten HUD-States)
+    ensureVFX()
+    if payload.magnet ~= nil then
+        local magnetSecs = math.max(0, (payload.magnet or 0))
+        if magnetEmitter then
+            magnetEmitter.Enabled = magnetSecs > 0
+        end
+    end
+    local shieldHits = payload.shield or 0
+    local shieldSecs = math.max(0, (payload.shieldTime or 0))
+    if shieldField then
+        shieldField.Visible = (shieldHits > 0) or (shieldSecs > 0)
     end
 end)
 
@@ -743,7 +1042,9 @@ do
     end
     local function playCoinSound()
         local ids = (Constants.AUDIO and Constants.AUDIO.CoinSoundIds) or {}
-        playFirst(ids, "CoinPickupSFX", 0.5)
+        local vcfg = (Constants.AUDIO and Constants.AUDIO.SFXVolumes) or {}
+        local vMaster = (vcfg.Master or 1.0)
+        playFirst(ids, "CoinPickupSFX", (vcfg.Coin or 0.5) * vMaster)
     end
     if CoinPickup then
         CoinPickup.OnClientEvent:Connect(playCoinSound)
@@ -753,6 +1054,9 @@ end
 -- GameOver overlay listener
 local GameOver = Remotes:WaitForChild("GameOver") :: RemoteEvent
 GameOver.OnClientEvent:Connect(function()
+    if music_onGameOverRef then
+        music_onGameOverRef()
+    end
     -- Crash/GameOver SFX
     task.spawn(function()
         local ids = (Constants.AUDIO and Constants.AUDIO.CrashSoundIds) or {}
@@ -791,14 +1095,24 @@ GameOver.OnClientEvent:Connect(function()
             end
         end
         -- 1) Crash-Kandidaten
-        tryPlayList(ids, "CrashSFX", 0.8)
+        local vcfg = (Constants.AUDIO and Constants.AUDIO.SFXVolumes) or {}
+        local vMaster = (vcfg.Master or 1.0)
+        tryPlayList(ids, "CrashSFX", (vcfg.Crash or 0.8) * vMaster)
         -- 2) Fallback: Powerup-Kandidaten
         if not played then
-            tryPlayList((Constants.AUDIO and Constants.AUDIO.PowerupSoundIds) or {}, "CrashFallbackPowerup", 0.7)
+            tryPlayList(
+                (Constants.AUDIO and Constants.AUDIO.PowerupSoundIds) or {},
+                "CrashFallbackPowerup",
+                (vcfg.Powerup or 0.6) * vMaster
+            )
         end
         -- 3) Fallback: Coin-Kandidaten
         if not played then
-            tryPlayList((Constants.AUDIO and Constants.AUDIO.CoinSoundIds) or {}, "CrashFallbackCoin", 0.6)
+            tryPlayList(
+                (Constants.AUDIO and Constants.AUDIO.CoinSoundIds) or {},
+                "CrashFallbackCoin",
+                (vcfg.Coin or 0.5) * vMaster
+            )
         end
     end)
     local playerGui = player:WaitForChild("PlayerGui")
@@ -900,6 +1214,45 @@ if PowerupPickup then
                 end
             end
         end
-        playFirst(powerupIds, "PowerupSFX", 0.6)
+        local vcfg = (Constants.AUDIO and Constants.AUDIO.SFXVolumes) or {}
+        local vMaster = (vcfg.Master or 1.0)
+        playFirst(powerupIds, "PowerupSFX", (vcfg.Powerup or 0.6) * vMaster)
+        if music_onPowerupRef then
+            music_onPowerupRef()
+        end
+    end)
+end
+
+-- Event announcements toast
+if EventAnnounce then
+    EventAnnounce.OnClientEvent:Connect(function(info)
+        local kind = info and info.kind
+        if kind == "DoubleCoins" then
+            -- Reuse simple SFX helper and screen message via HUD ensure
+            local hud = ensureHUD()
+            -- lightweight toast using a temporary TextLabel at top center
+            local toast = hud:FindFirstChild("EventToast") :: TextLabel?
+            if not toast then
+                toast = Instance.new("TextLabel")
+                toast.Name = "EventToast"
+                toast.BackgroundTransparency = 0.2
+                toast.BackgroundColor3 = Color3.fromRGB(35, 80, 35)
+                toast.TextColor3 = Color3.new(1, 1, 1)
+                toast.Font = Enum.Font.GothamBold
+                toast.TextScaled = true
+                toast.Size = UDim2.fromOffset(280, 36)
+                toast.AnchorPoint = Vector2.new(0.5, 0)
+                toast.Position = UDim2.fromScale(0.5, 0.05)
+                toast.Visible = false
+                toast.Parent = hud
+            end
+            toast.Text = "Event: Double Coins!"
+            toast.Visible = true
+            task.delay(2.0, function()
+                if toast and toast.Parent then
+                    toast.Visible = false
+                end
+            end)
+        end
     end)
 end

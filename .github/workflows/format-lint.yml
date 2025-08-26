@@ -1,0 +1,63 @@
+name: CI • Format & Lint (StyLua, Selene) + Sourcemap
+
+on:
+  push:
+    branches: [ "**" ]
+  pull_request:
+    branches: [ "**" ]
+
+jobs:
+  format_lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-cargo-${{ hashFiles('aftman.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Install StyLua 0.20.1
+        run: |
+          if ! command -v stylua >/dev/null 2>&1; then
+            cargo install stylua --version 0.20.1
+          fi
+
+      - name: Install Selene 0.27.1
+        run: |
+          if ! command -v selene >/dev/null 2>&1; then
+            cargo install selene --version 0.27.1
+          fi
+
+      - name: Install Rojo 7.4.4 (for sourcemap)
+        run: |
+          if ! command -v rojo >/dev/null 2>&1; then
+            cargo install rojo --version 7.4.4
+          fi
+
+      - name: Stylua check
+        run: stylua --check .
+
+      - name: Selene lint (src/)
+        run: selene src
+
+      - name: Generate sourcemap (sanity)
+        run: rojo sourcemap -o sourcemap.json
+
+      - name: Upload sourcemap artifact (optional)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sourcemap
+          path: sourcemap.json

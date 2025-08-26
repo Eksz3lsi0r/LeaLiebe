@@ -6,11 +6,13 @@ return {
 			Shared = {
 				Constants = "src/ReplicatedStorage/Shared/Constants.lua",
 				Animations = "src/ReplicatedStorage/Shared/Animations.lua",
+				SpawnUtils = "src/ReplicatedStorage/Shared/SpawnUtils.lua",
 			},
 			Remotes = true,
 		},
 		ServerScriptService = {
 			Main = "src/ServerScriptService/Main.server.lua",
+			TestBootstrap = "src/ServerScriptService/TestBootstrap.server.lua",
 		},
 		StarterPlayer = {
 			StarterPlayerScripts = {
@@ -24,5 +26,7 @@ return {
 			Tracks = true,
 			SpawnLocation = true,
 		}
+		,
+		tests = "tests"
 	}
 }
