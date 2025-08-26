@@ -5,7 +5,7 @@
     "ReplicatedStorage": {
       "$className": "ReplicatedStorage",
       "Shared": {
-        "$path": "src/ReplicatedStorage/Shared"
+  "$path": "src/ReplicatedStorage/Shared"
       },
       "Remotes": {
         "$className": "Folder"

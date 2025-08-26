@@ -62,4 +62,13 @@ local speedLbl = (gui :: ScreenGui):FindFirstChild("Speed") :: TextLabel?
 if not speedLbl then speedLbl = makeLabel("Speed", UDim2.new(0, 20, 0, 120)) end
 speedLbl.Text = "0"
 
+-- optionale Powerup-Anzeigen
+local magnetLbl = (gui :: ScreenGui):FindFirstChild("Magnet") :: TextLabel?
+if not magnetLbl then magnetLbl = makeLabel("Magnet", UDim2.new(0, 20, 0, 170)) end
+magnetLbl.Text = ""
+
+local shieldLbl = (gui :: ScreenGui):FindFirstChild("Shield") :: TextLabel?
+if not shieldLbl then shieldLbl = makeLabel("Shield", UDim2.new(0, 20, 0, 220)) end
+shieldLbl.Text = ""
+
 print("[HUD] Labels initialized: Distance/Coins/Speed")

@@ -5,6 +5,7 @@ return {
 		ReplicatedStorage = {
 			Shared = {
 				Constants = "src/ReplicatedStorage/Shared/Constants.lua",
+				Animations = "src/ReplicatedStorage/Shared/Animations.lua",
 			},
 			Remotes = true,
 		},
