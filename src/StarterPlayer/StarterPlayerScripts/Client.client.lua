@@ -49,14 +49,25 @@ local Animations = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild
 }
 local Constants = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Constants")) :: any
 
+-- Lane-Infos und clientseitige Visualisierung des Spurwechsels
+local LANES: {number} = (Constants and Constants.LANES) or {-5, 0, 5}
+local targetLaneIndex: number = 2 -- Start in der Mitte
+-- Eff. seitliche Visualgeschwindigkeit: entspricht Server (LaneSwitchSpeed * LaneSwitchFactor)
+local laneSwitchSpeed: number = (((Constants and Constants.PLAYER and Constants.PLAYER.LaneSwitchSpeed) or 24)
+    * ((Constants and Constants.PLAYER and (Constants.PLAYER.LaneSwitchFactor or 1)) or 1))
+-- Prädizierte X-Position, der die Kamera lateral folgt (Z/Y von HRP)
+local predictedX: number? = nil
+
 -- Input: A/D or Left/Right to switch lanes
 local function onInputBegan(input: InputObject, gpe: boolean)
 	if gpe then return end
     -- A/D und Pfeile klassisch belegen
     if input.KeyCode == Enum.KeyCode.A or input.KeyCode == Enum.KeyCode.Left then
         LaneRequest:FireServer(1)  -- links
+        targetLaneIndex = math.clamp(targetLaneIndex + 1, 1, #LANES)
     elseif input.KeyCode == Enum.KeyCode.D or input.KeyCode == Enum.KeyCode.Right then
         LaneRequest:FireServer(-1)   -- rechts
+        targetLaneIndex = math.clamp(targetLaneIndex - 1, 1, #LANES)
     elseif input.KeyCode == Enum.KeyCode.Up or input.KeyCode == Enum.KeyCode.Space then
         ActionRequest:FireServer("Jump")
     elseif input.KeyCode == Enum.KeyCode.Down then
@@ -103,11 +114,47 @@ local function setupCamera()
 	local char = player.Character or player.CharacterAdded:Wait()
 	local hrp = char:WaitForChild("HumanoidRootPart") :: BasePart
 
-	game:GetService("RunService").RenderStepped:Connect(function()
-		local pos = hrp.Position
-		local camPos = pos + Vector3.new(0, 10, -18)
-		workspace.CurrentCamera.CFrame = CFrame.new(camPos, pos + Vector3.new(0, 4, 12))
-	end)
+    -- Initiale Zielspur anhand aktueller X-Position bestimmen
+    local function nearestLaneIndex(x: number): number
+        local bestIdx, bestDist = 1, math.huge
+        for i, laneX in ipairs(LANES) do
+            local d = math.abs(x - laneX)
+            if d < bestDist then bestIdx, bestDist = i, d end
+        end
+        return bestIdx
+    end
+    targetLaneIndex = nearestLaneIndex(hrp.Position.X)
+    predictedX = hrp.Position.X
+
+    local last = os.clock()
+    RunService.RenderStepped:Connect(function()
+        local now = os.clock()
+        local dt = math.clamp(now - last, 0, 1/15)
+        last = now
+
+        -- Seitliche Prädiktion Richtung Zielspur
+        local desiredX = LANES[targetLaneIndex]
+        local currentX = predictedX or hrp.Position.X
+        if math.abs(currentX - desiredX) < 0.05 then
+            currentX = desiredX
+        else
+            local dir = (desiredX > currentX) and 1 or -1
+            currentX = currentX + dir * laneSwitchSpeed * dt
+            if (dir > 0 and currentX > desiredX) or (dir < 0 and currentX < desiredX) then
+                currentX = desiredX
+            end
+        end
+        -- sanfte Korrektur zur Serverposition, falls merkliche Abweichung entsteht
+        local serverX = hrp.Position.X
+        if math.abs(serverX - currentX) > 1.2 then
+            currentX = currentX + (serverX - currentX) * 0.25
+        end
+        predictedX = currentX
+
+        local pos = Vector3.new(currentX, hrp.Position.Y, hrp.Position.Z)
+        local camPos = pos + Vector3.new(0, 10, -18)
+        workspace.CurrentCamera.CFrame = CFrame.new(camPos, pos + Vector3.new(0, 4, 12))
+    end)
 end
 
 task.spawn(setupCamera)
@@ -131,7 +178,9 @@ do
         local minDist = 40
         if dt < 0.6 then
             if math.abs(delta.X) > math.abs(delta.Y) and math.abs(delta.X) > minDist then
-                LaneRequest:FireServer(delta.X > 0 and 1 or -1)
+                local dir = (delta.X > 0) and 1 or -1
+                LaneRequest:FireServer(dir)
+                targetLaneIndex = math.clamp(targetLaneIndex + dir, 1, #LANES)
             elseif math.abs(delta.Y) > minDist then
                 if delta.Y < 0 then
                     ActionRequest:FireServer("Jump")

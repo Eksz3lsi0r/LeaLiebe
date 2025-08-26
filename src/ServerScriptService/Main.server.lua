@@ -314,7 +314,8 @@ local function stepPlayer(player: Player, dt: number)
 		nextX = desiredX
 	else
 		local dir = (desiredX > currentPos.X) and 1 or -1
-		nextX = currentPos.X + dir * Constants.PLAYER.LaneSwitchSpeed * dt
+		local laneFactor = (Constants.PLAYER and (Constants.PLAYER :: any).LaneSwitchFactor) or 1
+		nextX = currentPos.X + dir * Constants.PLAYER.LaneSwitchSpeed * laneFactor * dt
 		if (dir > 0 and nextX > desiredX) or (dir < 0 and nextX < desiredX) then
 			nextX = desiredX
 		end

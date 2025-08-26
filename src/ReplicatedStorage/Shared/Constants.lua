@@ -7,7 +7,8 @@ Constants.LANES = {
 Constants.PLAYER = {
 	BaseSpeed = 28, -- studs/sec forward
 	MaxSpeed = 60,
-	LaneSwitchSpeed = 24, -- studs/sec lateral
+	LaneSwitchSpeed = 24, -- studs/sec lateral (Basiswert)
+	LaneSwitchFactor = 2.0, -- Multiplikator für effektive Spurwechsel-Geschwindigkeit (z.B. 2.0 = doppelt so schnell)
 	Acceleration = 0.025, -- per second
 	-- Roll-Parameter: kurzer Vorwärtsschub für sichtbares "Abtauchen" unter Overhang
 	RollDuration = 0.6, -- Sekunden
