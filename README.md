@@ -132,7 +132,8 @@ Zielwerte und Leitplanken für ein „AAA“-Gefühl (Subway‑Surfers‑ähnlic
     - 26.08.2025: Zentrale SFX-Lautstärken (`Master`, `Coin`, `Jump`, `Slide`, `Powerup`, `Crash`) eingeführt und im Client verdrahtet; harte Werte entfernt. Anpassung ohne Spielverhaltensänderung.
 - UI/UX
   - [ ] HUD‑Feinschliff; Buttons Hauptmenü/Shop mit echter Logik.
-  - [ ] Accessibility: Farbkontrast, ScreenShake‑Toggle.
+  - [x] Accessibility: Farbkontrast, ScreenShake‑Toggle.
+    - 26.08.2025: High-Contrast-Theme + Effekte/SFX + ScreenShake als Toggles im HUD (Accessibility-Panel). Zustände via PlayerGui-Attribute (`HighContrast`, `EffectsEnabled`, `ScreenShake`), Kamera-Shake dezent und performant (exponentielles Decay, RenderStepped, keine Allokationen pro Frame).
 
 ## Testing & QA
 - Automatisiert

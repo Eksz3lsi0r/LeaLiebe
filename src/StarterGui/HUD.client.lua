@@ -484,6 +484,18 @@ if not accPanel then
     effects.Position = UDim2.fromOffset(10, 80)
     effects.Parent = accPanel
 
+    -- ScreenShake Toggle
+    local shakeBtn = Instance.new("TextButton")
+    shakeBtn.Name = "ScreenShake"
+    shakeBtn.Text = "Screenshake: AN"
+    shakeBtn.Font = Enum.Font.Gotham
+    shakeBtn.TextScaled = true
+    shakeBtn.TextColor3 = Theme.Text
+    shakeBtn.BackgroundColor3 = Theme.Bg2
+    shakeBtn.Size = UDim2.fromOffset(240, 36)
+    shakeBtn.Position = UDim2.fromOffset(10, 120)
+    shakeBtn.Parent = accPanel
+
     -- Initialize attributes on PlayerGui (acts as simple client-side store)
     if playerGui:GetAttribute("HighContrast") == nil then
         playerGui:SetAttribute("HighContrast", false)
@@ -491,12 +503,17 @@ if not accPanel then
     if playerGui:GetAttribute("EffectsEnabled") == nil then
         playerGui:SetAttribute("EffectsEnabled", true)
     end
+    if playerGui:GetAttribute("ScreenShake") == nil then
+        playerGui:SetAttribute("ScreenShake", true)
+    end
 
     local function syncButtons()
         local hc = playerGui:GetAttribute("HighContrast") == true
         local fx = playerGui:GetAttribute("EffectsEnabled") ~= false
+        local ss = playerGui:GetAttribute("ScreenShake") ~= false
         highContrast.Text = hc and "Hoher Kontrast: AN" or "Hoher Kontrast: AUS"
         effects.Text = fx and "Effekte: AN" or "Effekte: AUS"
+        shakeBtn.Text = ss and "Screenshake: AN" or "Screenshake: AUS"
         applyTheme(hc)
         -- restyle full HUD on theme change
         restyle()
@@ -514,6 +531,11 @@ if not accPanel then
     end)
     effects.MouseButton1Click:Connect(function()
         playerGui:SetAttribute("EffectsEnabled", not (playerGui:GetAttribute("EffectsEnabled") ~= false))
+        syncButtons()
+    end)
+
+    shakeBtn.MouseButton1Click:Connect(function()
+        playerGui:SetAttribute("ScreenShake", not (playerGui:GetAttribute("ScreenShake") ~= false))
         syncButtons()
     end)
 
@@ -577,3 +599,29 @@ if EventAnnounce then
         end
     end)
 end
+
+-- Funktion zum Erstellen von Schaltflächen im Hauptmenü
+local function createButton(text, position)
+    local button = Instance.new("TextButton")
+    button.Text = text
+    button.Position = position
+    button.Size = UDim2.new(0, 200, 0, 50)
+    button.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    button.TextColor3 = Color3.fromRGB(0, 0, 0)
+    button.Parent = game.Players.LocalPlayer:WaitForChild("PlayerGui").ScreenGui
+
+    -- Logik für Schaltflächenaktionen
+    button.MouseButton1Click:Connect(function()
+        if text == "Shop" then
+            -- Logik für den Shop
+            print("Shop geöffnet")
+        elseif text == "Start" then
+            -- Logik für den Spielstart
+            print("Spiel gestartet")
+        end
+    end)
+end
+
+-- Schaltflächen im Hauptmenü erstellen
+createButton("Start", UDim2.new(0.5, -100, 0.5, -25)) -- Start-Button
+createButton("Shop", UDim2.new(0.5, -100, 0.5, 25)) -- Shop-Button

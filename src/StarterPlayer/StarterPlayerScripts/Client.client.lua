@@ -378,6 +378,32 @@ do
 end
 
 -- Basic camera: follow behind
+-- Lightweight camera shake (attribute gated)
+local shakeAmp = 0.0 -- current amplitude in studs
+local shakeFreq = 12.0 -- Hz
+local shakeDecay = 4.5 -- per second exponential
+local shakeSeed = math.random() * 1000
+
+local function triggerShake(amp: number, duration: number?)
+    -- respect PlayerGui ScreenShake attribute
+    local pgOk, pg = pcall(function()
+        return player:WaitForChild("PlayerGui")
+    end)
+    if not pgOk or not pg then
+        return
+    end
+    if pg:GetAttribute("ScreenShake") == false then
+        return
+    end
+    -- convert a duration into an initial amplitude that decays to ~1% after duration
+    if duration and duration > 0 then
+        -- a = a0 * exp(-k t) => a0 such that at t=0 -> amp, so we just take amp
+        shakeAmp = math.max(shakeAmp, amp)
+    else
+        shakeAmp = math.max(shakeAmp, amp)
+    end
+end
+
 local function setupCamera()
     local cam = workspace.CurrentCamera
     cam.CameraType = Enum.CameraType.Scriptable
@@ -399,10 +425,12 @@ local function setupCamera()
     predictedX = hrp.Position.X
 
     local last = os.clock()
+    local tAccum = 0.0
     RunService.RenderStepped:Connect(function()
         local now = os.clock()
         local dt = math.clamp(now - last, 0, 1 / 15)
         last = now
+        tAccum += dt
 
         -- Seitliche Prädiktion Richtung Zielspur
         local desiredX = LANES[targetLaneIndex]
@@ -425,11 +453,31 @@ local function setupCamera()
 
         local pos = Vector3.new(currentX, hrp.Position.Y, hrp.Position.Z)
         local camPos = pos + Vector3.new(0, 10, -18)
+
+        -- Apply subtle camera shake if active
+        if shakeAmp > 1e-3 then
+            -- exponential decay
+            shakeAmp *= math.exp(-shakeDecay * dt)
+            -- two-axis oscillation with slight phase offset
+            local sx = math.sin((tAccum + shakeSeed) * 2 * math.pi * shakeFreq)
+            local sy = math.cos((tAccum * 0.93 + shakeSeed * 1.1) * 2 * math.pi * (shakeFreq * 0.85))
+            local offset = Vector3.new(sx, sy, 0) * shakeAmp
+            camPos += offset
+        end
+
         workspace.CurrentCamera.CFrame = CFrame.new(camPos, pos + Vector3.new(0, 4, 12))
     end)
 end
 
 task.spawn(setupCamera)
+
+-- Expose simple shake triggers for key events (optional use)
+local function shakeCrash()
+    triggerShake(0.7, 0.25)
+end
+local function shakeHardLand()
+    triggerShake(0.25, 0.15)
+end
 
 -- Simple swipe gestures for mobile
 do
@@ -1057,6 +1105,10 @@ GameOver.OnClientEvent:Connect(function()
     if music_onGameOverRef then
         music_onGameOverRef()
     end
+    -- Trigger a brief camera shake on crash (if enabled)
+    pcall(function()
+        shakeCrash()
+    end)
     -- Crash/GameOver SFX
     task.spawn(function()
         local ids = (Constants.AUDIO and Constants.AUDIO.CrashSoundIds) or {}
