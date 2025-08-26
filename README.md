@@ -22,6 +22,7 @@ Hinweis zu Steuerung/Konventionen
 - [x] Spurwechsel per Lerp mit `LaneSwitchSpeed`
 - [x] Sprung & Rollen (RollDuration, RollBoost) inkl. niedrigerer AABB beim Rollen
   - Stand: Kollisionsbox dynamisch (Höhe 2.2 bei Roll).
+  - 26.08.2025: Input-Gating serverseitig: Jump/Slide nur aus Run; doppeltes Triggern verhindert; Jump cancel → sofortige Roll (S in der Luft startet Roll sofort); aus aktiver Roll triggert W/Space direkt Jump.
 - [x] Kamera Follow (hinter dem Spieler)
   - Stand: `Client.client.lua` (RenderStepped).
 

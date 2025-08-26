@@ -37,6 +37,11 @@ local ActionRequest = Instance.new("RemoteEvent")
 ActionRequest.Name = "ActionRequest"
 ActionRequest.Parent = RemotesFolder
 
+-- Server->Client Synchronisation für gestartete Aktionen (Jump/Roll)
+local ActionSync = Instance.new("RemoteEvent")
+ActionSync.Name = "ActionSync"
+ActionSync.Parent = RemotesFolder
+
 -- Neues RemoteEvent für Game Over
 local GameOver = Instance.new("RemoteEvent")
 GameOver.Name = "GameOver"
@@ -73,6 +78,8 @@ export type PlayerState = {
 	-- Powerups
 	MagnetUntil: number?,
 	ShieldHits: number?,
+	-- Input-Gating
+	QueueRollOnLand: boolean?, -- wenn Roll in der Luft gedrückt wurde, auf Landung vormerken
 }
 
 local state: { [Player]: PlayerState } = {}
@@ -147,6 +154,7 @@ local function createRunnerFor(player: Player)
 		OnGround = true,
 		RollingUntil = 0,
 		WasOnGround = true,
+	QueueRollOnLand = false,
 	}
 
 	-- Place runner at start position (180° gedreht, Rücken zur Kamera)
@@ -339,6 +347,19 @@ local function stepPlayer(player: Player, dt: number)
 					hum:ChangeState(Enum.HumanoidStateType.RunningNoPhysics)
 				end)
 			end
+			-- Wenn während des Sprungs Roll gewünscht wurde, jetzt starten
+			if s.QueueRollOnLand then
+				s.QueueRollOnLand = false
+				local duration = (Constants.PLAYER.RollDuration or 0.6)
+				s.RollingUntil = os.clock() + duration
+				if hum then
+					pcall(function()
+						hum:ChangeState(Enum.HumanoidStateType.Running)
+					end)
+				end
+				-- Client über Roll-Start informieren
+				ActionSync:FireClient(player, { action = "Roll" })
+			end
 		end
 	else
 		s.OnGround = false
@@ -512,29 +533,63 @@ ActionRequest.OnServerEvent:Connect(function(player, action: string)
 	local s = state[player]
 	if not s or s.GameOver then return end
 	local hum = s.Humanoid
+	local now = os.clock()
+	local isRolling = (s.RollingUntil or 0) > now
+	local onGround = (s.OnGround == true)
+	local isJumping = not onGround
+
 	if action == "Jump" then
-	if s.OnGround and (s.RollingUntil or 0) <= os.clock() then
+		-- Verhindere erneutes Jump während eines laufenden Jumps
+		if isJumping then return end
+		-- Erlaube Jump aus Run/Walk oder aus aktivem Roll
+		if onGround or isRolling then
+			-- Beende ggf. Roll und starte Jump sofort
+			s.RollingUntil = 0
 			s.VerticalVel = 50 -- Sprungstärke
 			s.OnGround = false
-			-- Sprunganimation starten
 			if hum then
 				hum.Jump = true
 				pcall(function()
 					hum:ChangeState(Enum.HumanoidStateType.Jumping)
 				end)
 			end
+			-- Client über Jump-Start informieren
+			ActionSync:FireClient(player, { action = "Jump" })
 		end
 	elseif action == "Roll" then
-		local now = os.clock()
-	if s.OnGround and (s.RollingUntil or 0) <= now then
-			local duration = Constants.PLAYER.RollDuration or 0.6
-			s.RollingUntil = now + duration -- Roll aktiv, kein Cooldown
-			-- optional: State halten
+		-- Verhindere erneutes Roll während laufendem Roll
+		if isRolling then return end
+		local duration = Constants.PLAYER.RollDuration or 0.6
+		if onGround then
+			-- Erlaubt: aus Run/Walk sofort rollen
+			s.RollingUntil = now + duration
 			if hum then
 				pcall(function()
 					hum:ChangeState(Enum.HumanoidStateType.Running)
 				end)
 			end
+			ActionSync:FireClient(player, { action = "Roll" })
+		else
+			-- In der Luft (Jump): Jump cancel → sofortige Roll
+			-- Setze den Spieler direkt auf den Boden und starte die Roll sofort
+			s.VerticalY = 3
+			s.VerticalVel = 0
+			s.OnGround = true
+			local hrp = s.HRP
+			if hrp then
+				local p = hrp.Position
+				hrp.CFrame = CFrame.new(p.X, 3, p.Z) * CFrame.Angles(0, math.pi, 0)
+			end
+			s.RollingUntil = now + duration
+			s.QueueRollOnLand = false
+			if hum then
+				hum.Jump = false
+				stopJumpTracks(hum)
+				pcall(function()
+					hum:ChangeState(Enum.HumanoidStateType.Running)
+				end)
+			end
+			ActionSync:FireClient(player, { action = "Roll" })
 		end
 	end
 end)

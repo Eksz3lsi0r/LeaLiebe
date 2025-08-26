@@ -16,6 +16,33 @@ local CoinPickup = Remotes:FindFirstChild("CoinPickup") :: RemoteEvent?
 local PowerupPickup = Remotes:FindFirstChild("PowerupPickup") :: RemoteEvent?
 local RestartRequest = Remotes:WaitForChild("RestartRequest") :: RemoteEvent
 local ActionRequest = Remotes:WaitForChild("ActionRequest") :: RemoteEvent
+local ActionSync = Remotes:FindFirstChild("ActionSync") :: RemoteEvent?
+
+-- Shared roll window across closures so server-driven Roll (ActionSync) can inform animator checks
+local rollingUntilShared = 0.0
+
+-- Simple SFX helper available to all scopes
+local function playSfx(ids: {number}?, name: string, volume: number)
+    if not ids or #ids == 0 then return end
+    for _, id in ipairs(ids) do
+        if typeof(id) == "number" and id > 0 then
+            local s = Instance.new("Sound")
+            s.Name = name
+            s.SoundId = string.format("rbxassetid://%d", id)
+            s.Volume = volume
+            s.Parent = SoundService
+            local ok = pcall(function()
+                SoundService:PlayLocalSound(s)
+            end)
+            if ok then
+                task.delay(2, function() if s and s.Parent then s:Destroy() end end)
+                break
+            else
+                if s then s:Destroy() end
+            end
+        end
+    end
+end
 
 local Animations = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Animations")) :: {
     Run: number?, Jump: number?, Fall: number?, Slide: number?, Walk: number?
@@ -32,56 +59,10 @@ local function onInputBegan(input: InputObject, gpe: boolean)
         LaneRequest:FireServer(-1)   -- rechts
     elseif input.KeyCode == Enum.KeyCode.Up or input.KeyCode == Enum.KeyCode.Space then
         ActionRequest:FireServer("Jump")
-        -- Jump SFX
-        task.spawn(function()
-            local ids = (Constants.AUDIO and Constants.AUDIO.JumpSoundIds) or {}
-            if ids and #ids > 0 then
-                for _, id in ipairs(ids) do
-                    if typeof(id) == "number" and id > 0 then
-                        local s = Instance.new("Sound")
-                        s.Name = "JumpSFX"
-                        s.SoundId = string.format("rbxassetid://%d", id)
-                        s.Volume = 0.6
-                        s.Parent = SoundService
-                        local ok = pcall(function()
-                            SoundService:PlayLocalSound(s)
-                        end)
-                        if ok then
-                            task.delay(2, function() if s and s.Parent then s:Destroy() end end)
-                            break
-                        else
-                            if s then s:Destroy() end
-                        end
-                    end
-                end
-            end
-        end)
     elseif input.KeyCode == Enum.KeyCode.Down then
+        -- Clientseitiges Gating: Während aktiver Roll kein erneutes Triggern/SFX
+        if os.clock() < rollingUntilShared then return end
         ActionRequest:FireServer("Roll")
-        -- Slide SFX
-        task.spawn(function()
-            local ids = (Constants.AUDIO and Constants.AUDIO.SlideSoundIds) or {}
-            if ids and #ids > 0 then
-                for _, id in ipairs(ids) do
-                    if typeof(id) == "number" and id > 0 then
-                        local s = Instance.new("Sound")
-                        s.Name = "SlideSFX"
-                        s.SoundId = string.format("rbxassetid://%d", id)
-                        s.Volume = 0.6
-                        s.Parent = SoundService
-                        local ok = pcall(function()
-                            SoundService:PlayLocalSound(s)
-                        end)
-                        if ok then
-                            task.delay(2, function() if s and s.Parent then s:Destroy() end end)
-                            break
-                        else
-                            if s then s:Destroy() end
-                        end
-                    end
-                end
-            end
-        end)
 	end
 end
 UserInputService.InputBegan:Connect(onInputBegan)
@@ -92,30 +73,6 @@ do
         -- Always sink to block default forward movement
         if inputState == Enum.UserInputState.Begin then
             ActionRequest:FireServer("Jump")
-            -- Jump SFX
-            task.spawn(function()
-                local ids = (Constants.AUDIO and Constants.AUDIO.JumpSoundIds) or {}
-                if ids and #ids > 0 then
-                    for _, id in ipairs(ids) do
-                        if typeof(id) == "number" and id > 0 then
-                            local s = Instance.new("Sound")
-                            s.Name = "JumpSFX"
-                            s.SoundId = string.format("rbxassetid://%d", id)
-                            s.Volume = 0.6
-                            s.Parent = SoundService
-                            local ok = pcall(function()
-                                SoundService:PlayLocalSound(s)
-                            end)
-                            if ok then
-                                task.delay(2, function() if s and s.Parent then s:Destroy() end end)
-                                break
-                            else
-                                if s then s:Destroy() end
-                            end
-                        end
-                    end
-                end
-            end)
         end
         return Enum.ContextActionResult.Sink
     end
@@ -123,31 +80,11 @@ do
     local function handleRollAction(actionName: string, inputState: Enum.UserInputState, input: InputObject)
         -- Always sink to block default backward movement (which slows player)
         if inputState == Enum.UserInputState.Begin then
+            -- Clientseitiges Gating: Wenn bereits Slide aktiv, tue nichts (kein SFX)
+            if os.clock() < rollingUntilShared then
+                return Enum.ContextActionResult.Sink
+            end
             ActionRequest:FireServer("Roll")
-            -- Slide SFX (vormals Roll)
-            task.spawn(function()
-                local ids = (Constants.AUDIO and Constants.AUDIO.SlideSoundIds) or {}
-                if ids and #ids > 0 then
-                    for _, id in ipairs(ids) do
-                        if typeof(id) == "number" and id > 0 then
-                            local s = Instance.new("Sound")
-                            s.Name = "SlideSFX"
-                            s.SoundId = string.format("rbxassetid://%d", id)
-                            s.Volume = 0.6
-                            s.Parent = SoundService
-                            local ok = pcall(function()
-                                SoundService:PlayLocalSound(s)
-                            end)
-                            if ok then
-                                task.delay(2, function() if s and s.Parent then s:Destroy() end end)
-                                break
-                            else
-                                if s then s:Destroy() end
-                            end
-                        end
-                    end
-                end
-            end)
         end
         return Enum.ContextActionResult.Sink
     end
@@ -198,56 +135,10 @@ do
             elseif math.abs(delta.Y) > minDist then
                 if delta.Y < 0 then
                     ActionRequest:FireServer("Jump")
-                    -- Jump SFX
-                    task.spawn(function()
-                        local ids = (Constants.AUDIO and Constants.AUDIO.JumpSoundIds) or {}
-                        if ids and #ids > 0 then
-                            for _, id in ipairs(ids) do
-                                if typeof(id) == "number" and id > 0 then
-                                    local s = Instance.new("Sound")
-                                    s.Name = "JumpSFX"
-                                    s.SoundId = string.format("rbxassetid://%d", id)
-                                    s.Volume = 0.6
-                                    s.Parent = SoundService
-                                    local ok = pcall(function()
-                                        SoundService:PlayLocalSound(s)
-                                    end)
-                                    if ok then
-                                        task.delay(2, function() if s and s.Parent then s:Destroy() end end)
-                                        break
-                                    else
-                                        if s then s:Destroy() end
-                                    end
-                                end
-                            end
-                        end
-                    end)
                 else
+                    -- Clientseitiges Gating: Wenn Slide läuft, ignoriere Swipe-Down
+                    if os.clock() < rollingUntilShared then return end
                     ActionRequest:FireServer("Roll")
-                    -- Slide SFX
-                    task.spawn(function()
-                        local ids = (Constants.AUDIO and Constants.AUDIO.SlideSoundIds) or {}
-                        if ids and #ids > 0 then
-                            for _, id in ipairs(ids) do
-                                if typeof(id) == "number" and id > 0 then
-                                    local s = Instance.new("Sound")
-                                    s.Name = "SlideSFX"
-                                    s.SoundId = string.format("rbxassetid://%d", id)
-                                    s.Volume = 0.6
-                                    s.Parent = SoundService
-                                    local ok = pcall(function()
-                                        SoundService:PlayLocalSound(s)
-                                    end)
-                                    if ok then
-                                        task.delay(2, function() if s and s.Parent then s:Destroy() end end)
-                                        break
-                                    else
-                                        if s then s:Destroy() end
-                                    end
-                                end
-                            end
-                        end
-                    end)
                 end
             end
         end
@@ -351,10 +242,10 @@ local function setupAnimator()
     -- react to state changes
     hum.StateChanged:Connect(function(_, new)
     -- Wenn wir sliden, ignorieren wir Zustandswechsel, die Run/Fall triggern würden
-        if os.clock() < rollingUntil then
+        if os.clock() < math.max(rollingUntil, rollingUntilShared) then
             return
         end
-        if new == Enum.HumanoidStateType.Jumping then
+    if new == Enum.HumanoidStateType.Jumping then
             jumpGraceUntil = os.clock() + 0.3
             play("Jump", 0.05, true)
         elseif new == Enum.HumanoidStateType.Freefall then
@@ -396,7 +287,7 @@ local function setupAnimator()
     if hum.FloorMaterial ~= Enum.Material.Air then
             -- Während Slide keine Run/Fall-Umschaltung auslösen; kein Auto-Replay,
             -- damit Slide/Jump sich nicht gegenseitig dauerhaft sperren
-            if os.clock() < rollingUntil then
+            if os.clock() < math.max(rollingUntil, rollingUntilShared) then
                 return
             end
             local now = os.clock()
@@ -428,7 +319,7 @@ local function setupAnimator()
             end
         else
             -- Airborne: ensure Fall plays when not actively in Jump
-            if os.clock() < rollingUntil then
+            if os.clock() < math.max(rollingUntil, rollingUntilShared) then
                 -- In der Luft sollte Slide normal nicht aktiv sein; falls doch, brechen wir nicht um
                 return
             end
@@ -447,10 +338,15 @@ local function setupAnimator()
         if gpe and not (input.KeyCode == Enum.KeyCode.W or input.KeyCode == Enum.KeyCode.S) then return end
         local grounded = hum.FloorMaterial ~= Enum.Material.Air
         if input.KeyCode == Enum.KeyCode.S then
+            -- Während aktiver Slide keine erneute Auslösung / kein SFX
+            if os.clock() < math.max(rollingUntil, rollingUntilShared) then
+                return
+            end
             -- Slide nur am Boden starten
             if grounded then
                 local duration = (Constants.PLAYER and Constants.PLAYER.RollDuration) or 0.6
                 rollingUntil = os.clock() + duration
+                rollingUntilShared = rollingUntil
                 -- Wechsel auf Slide: evtl. laufenden Jump abbrechen und Grace zurücksetzen
                 jumpGraceUntil = 0
                 if tracks["Jump"] and tracks["Jump"].IsPlaying then
@@ -462,15 +358,33 @@ local function setupAnimator()
                 if tracks["Slide"] then
                     play("Slide", 0.05, true)
                 end
+            else
+                -- In der Luft: Der Server bricht Jump sofort ab und startet Roll; spiegle das lokal direkt
+                local duration = (Constants.PLAYER and Constants.PLAYER.RollDuration) or 0.6
+                rollingUntil = os.clock() + duration
+                rollingUntilShared = rollingUntil
+                -- Stoppe Jump/Fall sofort und spiele Slide
+                jumpGraceUntil = 0
+                if tracks["Jump"] and tracks["Jump"].IsPlaying then tracks["Jump"]:Stop(0.05) end
+                if tracks["Fall"] and tracks["Fall"].IsPlaying then tracks["Fall"]:Stop(0.05) end
+                if tracks["Slide"] then play("Slide", 0.05, true) end
             end
         elseif input.KeyCode == Enum.KeyCode.W then
             -- Jump sofort lokal triggern (Responsiveness), nur am Boden und nicht während Roll
-            if grounded and os.clock() >= rollingUntil then
+            if grounded and os.clock() >= math.max(rollingUntil, rollingUntilShared) then
                 -- Wechsel auf Jump: Slide sofort freigeben und evtl. Track stoppen
                 rollingUntil = 0
+                rollingUntilShared = 0
                 if tracks["Slide"] and tracks["Slide"].IsPlaying then
                     tracks["Slide"]:Stop(0.05)
                 end
+                jumpGraceUntil = os.clock() + 0.3
+                play("Jump", 0.05, true)
+            elseif os.clock() < math.max(rollingUntil, rollingUntilShared) then
+                -- Während Slide ersetzt W sofort Slide durch Jump (spiegele Serverlogik)
+                rollingUntil = 0
+                rollingUntilShared = 0
+                if tracks["Slide"] and tracks["Slide"].IsPlaying then tracks["Slide"]:Stop(0.05) end
                 jumpGraceUntil = os.clock() + 0.3
                 play("Jump", 0.05, true)
             end
@@ -478,7 +392,7 @@ local function setupAnimator()
     end)
     RunService.RenderStepped:Connect(function()
         -- Wenn Slide abgelaufen ist und wir am Boden sind, zurück zu Run, falls nicht schon aktiv
-        if os.clock() >= rollingUntil then
+        if os.clock() >= math.max(rollingUntil, rollingUntilShared) then
             if hum.FloorMaterial ~= Enum.Material.Air then
                 -- Sicherstellen, dass evtl. hängen gebliebener Slide-Track gestoppt ist
                 if tracks["Slide"] and tracks["Slide"].IsPlaying then
@@ -491,6 +405,32 @@ local function setupAnimator()
             end
         end
     end)
+
+    -- Serverseitige ActionSync-Events direkt im Animator-Context spiegeln (damit wir Zugriff auf Tracks/Play haben)
+    if ActionSync then
+        ActionSync.OnClientEvent:Connect(function(info)
+            local action = info and info.action
+            if not action then return end
+            if action == "Roll" then
+                local duration = (Constants.PLAYER and Constants.PLAYER.RollDuration) or 0.6
+                rollingUntil = os.clock() + duration
+                rollingUntilShared = rollingUntil
+                -- Stoppe Jump/Fall und spiele Slide
+                jumpGraceUntil = 0
+                if tracks["Jump"] and tracks["Jump"].IsPlaying then tracks["Jump"]:Stop(0.05) end
+                if tracks["Fall"] and tracks["Fall"].IsPlaying then tracks["Fall"]:Stop(0.05) end
+                if tracks["Slide"] then play("Slide", 0.05, true) end
+                playSfx((Constants.AUDIO and Constants.AUDIO.SlideSoundIds) or {}, "SlideSFX", 0.6)
+            elseif action == "Jump" then
+                rollingUntil = 0
+                rollingUntilShared = 0
+                if tracks["Slide"] and tracks["Slide"].IsPlaying then tracks["Slide"]:Stop(0.05) end
+                jumpGraceUntil = os.clock() + 0.3
+                play("Jump", 0.05, true)
+                playSfx((Constants.AUDIO and Constants.AUDIO.JumpSoundIds) or {}, "JumpSFX", 0.6)
+            end
+        end)
+    end
 end
 
 task.spawn(setupAnimator)
