@@ -10,8 +10,16 @@ Ziel: KI-Agents schnell produktiv machen für diesen Roblox + Rojo Endless Runne
 - Rojo-Datenmodell: `default.project.json` (authoritativ), `rojo.toml` konsistent halten. Pro Spieler: `Workspace/Tracks/<UserId>/Seg_%04d`.
 
 ### Workflow
-- Start lokal: Rojo (`rojo serve`, via Aftman 7.4.4) und in Studio mit Plugin zu `localhost:34872` verbinden; Play drücken.
+- Start lokal: VS Code Task „Rojo: Serve“ starten und in Studio mit Plugin zu `localhost:34872` verbinden; Play.
 - Luau Strict (`--!strict`) beibehalten. Mapping-Änderungen in `default.project.json` (und `rojo.toml`) spiegeln.
+- Sourcemap für Luau-LSP aktuell halten: Task „Rojo: Sourcemap“ ausführen (schreibt `sourcemap.json`).
+
+### Quality Bar & KPIs (kurz)
+- 60 FPS anstreben (keine Allokationen in RenderStepped, Instanzen cachen).
+- Server ist Quelle der Wahrheit (keine Client-Positionsschreibungen, HRP NetworkOwner=nil).
+- Remotes: Input bündeln; HUD-Updates auf ~0,15 s throttlen (kleine Payload).
+- Eingabefeedback <80 ms: SFX/Anim lokal am Client, Server sync via ActionSync.
+- Speicher: Track-Cleanup konsequent; Pooling evaluieren (Mobile <350 MB).
 
 ### Spielregeln & Konventionen
 - Lanes: `Constants.LANES = {-5, 0, 5}`, Start Mitte (Index 2). HRP dauerhaft 180° gedreht (blickt +Z).

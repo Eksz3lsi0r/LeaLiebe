@@ -12,7 +12,8 @@ Hinweis zu Steuerung/Konventionen
   - Stand: Struktur vorhanden; Tracks unter `Workspace/Tracks/<UserId>` mit `Seg_%04d`.
 - [x] VS Code Task für Rojo Serve (Auto-Start bei Ordner-Öffnen)
   - Stand: `tasks.json` startet Rojo automatisch.
-- [ ] Aftman Toolchain-Hinweise in Doku aufnehmen
+- [x] Toolchain gepinnt in `aftman.toml`
+  - Rojo, `luau-lsp`, `stylua`, `selene` — bereits eingerichtet; keine weiteren Install-Schritte nötig.
 
 ## Core Gameplay
 - [x] 3 Spuren X={-5,0,5}, Start Mitte
@@ -81,4 +82,51 @@ Hinweis zu Steuerung/Konventionen
 1) VS Code öffnet Projekt → Rojo startet automatisch (Tasks).
 2) In Roblox Studio mit Rojo verbinden (localhost:34872) und Play drücken.
 3) Steuern: A/D oder Pfeile (Spur), W/Space (Jump), S (Roll), Mobile Swipe.
+
+## AAA Quality Bar & KPIs
+Zielwerte und Leitplanken für ein „AAA“-Gefühl (Subway‑Surfers‑ähnlich):
+- Performance: 60 FPS Ziel; RenderStepped ohne Allokationen im Client (`src/StarterPlayer/StarterPlayerScripts/Client.client.lua`), Instanzen cachen. Microprofiler/ScriptProfiler regelmäßig prüfen.
+- Netzwerk: Server bleibt autoritativ; `HumanoidRootPart:SetNetworkOwner(nil)` ist gesetzt (`src/ServerScriptService/Main.server.lua`). HUD-Updates sind auf ~0,15 s getaktet; Payload klein halten (Ganzzahlen, verbleibende Powerup‑Dauer in s).
+- Eingabelatenz: <80 ms bis sichtbares Feedback. Client spielt SFX/Animation lokal über `Shared/Animations.lua` und `Constants.AUDIO`, Server bestätigt via `ActionSync`.
+- Physik/Determinismus: Vortrieb/Spur-Lerp im Server-Heartbeat; keine Client‑Positionsschreibungen.
+- Speicher: Striktes Cleanup hinter dem Spieler; perspektivisch Segment‑Pooling evaluieren (<350 MB auf Mobile).
+
+## Production-Features (Roadmap)
+- Inhalte
+  - [ ] Weitere Hindernisvarianten (beweglich, mehrstufige Overhangs), Deko‑Prefabs; Weights in `src/ReplicatedStorage/Shared/Constants.lua` pflegen.
+  - [ ] Biomes/Themes (Tag/Nacht, Stadt/Strand/Schnee) mit sanften Übergängen.
+  - [ ] Dynamische Events (z. B. Double Coins 60 s).
+- Powerups & VFX
+  - [ ] Sichtbares Magnet-/Shield‑VFX am Charakter; Restlaufzeit im HUD (`src/StarterGui/HUD.client.lua`).
+  - [ ] Balancing von Dauer/Radius/Weights in `src/ReplicatedStorage/Shared/Constants.lua`.
+- Animationen
+  - [ ] Echte Slide‑Animation in `src/ReplicatedStorage/Shared/Animations.lua` eintragen; State‑Transitions (Run→Jump→Roll) glätten.
+  - [ ] Run‑PlaybackRate skaliert mit Speed (Client bereits vorbereitet).
+- Audio
+  - [ ] Musikloop + Ducking bei GameOver/Powerup; Finalisierung von `Constants.AUDIO` (Lautstärke normalisieren).
+- UI/UX
+  - [ ] HUD‑Feinschliff; Buttons Hauptmenü/Shop mit echter Logik.
+  - [ ] Accessibility: Farbkontrast, ScreenShake‑Toggle.
+
+## Testing & QA
+- Automatisiert
+  - [ ] Luau‑LSP/Format/Lint via Aftman (CI optional): `luau-lsp`, `stylua`, `selene`.
+  - [ ] Unit‑Tests für Utility-/Spawn‑Logik (TestEZ) – ggf. kleine Abstraktionen aus dem Server extrahieren.
+- Manuell
+  - [ ] Performance‑Matrix (Low‑End Mobile, Mid PC): FPS, GC‑Spikes, Remote‑Rate (UpdateHUD ~6–7 Hz).
+  - [ ] Edge Cases: Respawn, Wiederbeitritt, Mehrspieler, Powerup‑Überlappungen.
+- Telemetrie (dev)
+  - [ ] Metriken: Distanz‑Lebenszeit, Death‑Reasons (Obstacle/Overhang), Coins/min; Debug‑Ausgabe abschaltbar.
+
+## LiveOps & Monetarisierung (optional)
+- [ ] Soft‑Currency/Coins persistieren (DataStore); Highscore pro User.
+- [ ] Daily Missions/Quests; Login‑Streaks.
+- [ ] Skins/Boards (nur Kosmetik; kein Pay2Win).
+
+## Entwicklerhinweise (Querverweise)
+- Serverkern: `src/ServerScriptService/Main.server.lua`
+  - Remotes: LaneRequest, ActionRequest, ActionSync, UpdateHUD, CoinPickup, PowerupPickup, GameOver, RestartRequest
+- Clientkern: `src/StarterPlayer/StarterPlayerScripts/Client.client.lua`
+- Shared Konfig/Anims: `src/ReplicatedStorage/Shared/Constants.lua`, `src/ReplicatedStorage/Shared/Animations.lua`
+- Rojo Mapping: `default.project.json`, `rojo.toml`
 

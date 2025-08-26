@@ -22,8 +22,10 @@ local ActionSync = Remotes:FindFirstChild("ActionSync") :: RemoteEvent?
 local rollingUntilShared = 0.0
 
 -- Simple SFX helper available to all scopes
-local function playSfx(ids: {number}?, name: string, volume: number)
-    if not ids or #ids == 0 then return end
+local function playSfx(ids: { number }?, name: string, volume: number)
+    if not ids or #ids == 0 then
+        return
+    end
     for _, id in ipairs(ids) do
         if typeof(id) == "number" and id > 0 then
             local s = Instance.new("Sound")
@@ -35,52 +37,68 @@ local function playSfx(ids: {number}?, name: string, volume: number)
                 SoundService:PlayLocalSound(s)
             end)
             if ok then
-                task.delay(2, function() if s and s.Parent then s:Destroy() end end)
+                task.delay(2, function()
+                    if s and s.Parent then
+                        s:Destroy()
+                    end
+                end)
                 break
             else
-                if s then s:Destroy() end
+                if s then
+                    s:Destroy()
+                end
             end
         end
     end
 end
 
 local Animations = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Animations")) :: {
-    Run: number?, Jump: number?, Fall: number?, Slide: number?, Walk: number?
+    Run: number?,
+    Jump: number?,
+    Fall: number?,
+    Slide: number?,
+    Walk: number?,
 }
 local Constants = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Constants")) :: any
 
 -- Lane-Infos und clientseitige Visualisierung des Spurwechsels
-local LANES: {number} = (Constants and Constants.LANES) or {-5, 0, 5}
+local LANES: { number } = (Constants and Constants.LANES) or { -5, 0, 5 }
 local targetLaneIndex: number = 2 -- Start in der Mitte
 -- Eff. seitliche Visualgeschwindigkeit: entspricht Server (LaneSwitchSpeed * LaneSwitchFactor)
-local laneSwitchSpeed: number = (((Constants and Constants.PLAYER and Constants.PLAYER.LaneSwitchSpeed) or 24)
-    * ((Constants and Constants.PLAYER and (Constants.PLAYER.LaneSwitchFactor or 1)) or 1))
+local laneSwitchSpeed: number = (
+    ((Constants and Constants.PLAYER and Constants.PLAYER.LaneSwitchSpeed) or 24)
+    * ((Constants and Constants.PLAYER and (Constants.PLAYER.LaneSwitchFactor or 1)) or 1)
+)
 -- Prädizierte X-Position, der die Kamera lateral folgt (Z/Y von HRP)
 local predictedX: number? = nil
 
 -- Input: A/D or Left/Right to switch lanes
 local function onInputBegan(input: InputObject, gpe: boolean)
-	if gpe then return end
+    if gpe then
+        return
+    end
     -- A/D und Pfeile klassisch belegen
     if input.KeyCode == Enum.KeyCode.A or input.KeyCode == Enum.KeyCode.Left then
-        LaneRequest:FireServer(1)  -- links
+        LaneRequest:FireServer(1) -- links
         targetLaneIndex = math.clamp(targetLaneIndex + 1, 1, #LANES)
     elseif input.KeyCode == Enum.KeyCode.D or input.KeyCode == Enum.KeyCode.Right then
-        LaneRequest:FireServer(-1)   -- rechts
+        LaneRequest:FireServer(-1) -- rechts
         targetLaneIndex = math.clamp(targetLaneIndex - 1, 1, #LANES)
     elseif input.KeyCode == Enum.KeyCode.Up or input.KeyCode == Enum.KeyCode.Space then
         ActionRequest:FireServer("Jump")
     elseif input.KeyCode == Enum.KeyCode.Down then
         -- Clientseitiges Gating: Während aktiver Roll kein erneutes Triggern/SFX
-        if os.clock() < rollingUntilShared then return end
+        if os.clock() < rollingUntilShared then
+            return
+        end
         ActionRequest:FireServer("Roll")
-	end
+    end
 end
 UserInputService.InputBegan:Connect(onInputBegan)
 
 -- Bind W/S exclusively to Jump/Roll and sink default movement
 do
-    local function handleJumpAction(actionName: string, inputState: Enum.UserInputState, input: InputObject)
+    local function handleJumpAction(_actionName: string, inputState: Enum.UserInputState, _input: InputObject)
         -- Always sink to block default forward movement
         if inputState == Enum.UserInputState.Begin then
             ActionRequest:FireServer("Jump")
@@ -88,7 +106,7 @@ do
         return Enum.ContextActionResult.Sink
     end
 
-    local function handleRollAction(actionName: string, inputState: Enum.UserInputState, input: InputObject)
+    local function handleRollAction(_actionName: string, inputState: Enum.UserInputState, _input: InputObject)
         -- Always sink to block default backward movement (which slows player)
         if inputState == Enum.UserInputState.Begin then
             -- Clientseitiges Gating: Wenn bereits Slide aktiv, tue nichts (kein SFX)
@@ -109,17 +127,19 @@ end
 
 -- Basic camera: follow behind
 local function setupCamera()
-	local cam = workspace.CurrentCamera
-	cam.CameraType = Enum.CameraType.Scriptable
-	local char = player.Character or player.CharacterAdded:Wait()
-	local hrp = char:WaitForChild("HumanoidRootPart") :: BasePart
+    local cam = workspace.CurrentCamera
+    cam.CameraType = Enum.CameraType.Scriptable
+    local char = player.Character or player.CharacterAdded:Wait()
+    local hrp = char:WaitForChild("HumanoidRootPart") :: BasePart
 
     -- Initiale Zielspur anhand aktueller X-Position bestimmen
     local function nearestLaneIndex(x: number): number
         local bestIdx, bestDist = 1, math.huge
         for i, laneX in ipairs(LANES) do
             local d = math.abs(x - laneX)
-            if d < bestDist then bestIdx, bestDist = i, d end
+            if d < bestDist then
+                bestIdx, bestDist = i, d
+            end
         end
         return bestIdx
     end
@@ -129,7 +149,7 @@ local function setupCamera()
     local last = os.clock()
     RunService.RenderStepped:Connect(function()
         local now = os.clock()
-        local dt = math.clamp(now - last, 0, 1/15)
+        local dt = math.clamp(now - last, 0, 1 / 15)
         last = now
 
         -- Seitliche Prädiktion Richtung Zielspur
@@ -164,13 +184,19 @@ do
     local touchStart: Vector2? = nil
     local touchTime: number = 0
     UserInputService.TouchStarted:Connect(function(input, gpe)
-        if gpe then return end
+        if gpe then
+            return
+        end
         touchStart = input.Position
         touchTime = os.clock()
     end)
     UserInputService.TouchEnded:Connect(function(input, gpe)
-        if gpe then return end
-        if not touchStart then return end
+        if gpe then
+            return
+        end
+        if not touchStart then
+            return
+        end
         local delta = input.Position - touchStart
         local dt = os.clock() - touchTime
         touchStart = nil
@@ -186,7 +212,9 @@ do
                     ActionRequest:FireServer("Jump")
                 else
                     -- Clientseitiges Gating: Wenn Slide läuft, ignoriere Swipe-Down
-                    if os.clock() < rollingUntilShared then return end
+                    if os.clock() < rollingUntilShared then
+                        return
+                    end
                     ActionRequest:FireServer("Roll")
                 end
             end
@@ -225,12 +253,15 @@ local function setupAnimator()
     end
 
     local tracks: { [string]: AnimationTrack } = {}
+    local current: string? = nil
     local lastRunPlayback: number = 1.0
-    local runGraceUntil = 0.0   -- Grace nach Landung/Running, bevor wir Jump/Fall hart stoppen
-    local jumpGraceUntil = 0.0  -- Grace direkt nach Jump-Start, damit Jump nicht sofort am Boden abgebrochen wird
-    local rollingUntil = 0.0    -- während dieser Zeit darf Run/Fall Roll nicht übersteuern
+    local runGraceUntil = 0.0 -- Grace nach Landung/Running, bevor wir Jump/Fall hart stoppen
+    local jumpGraceUntil = 0.0 -- Grace direkt nach Jump-Start, damit Jump nicht sofort am Boden abgebrochen wird
+    local rollingUntil = 0.0 -- während dieser Zeit darf Run/Fall Roll nicht übersteuern
     local function load(name: string, id: number?, opts: { loop: boolean?, priority: Enum.AnimationPriority? }?)
-        if not id or id == 0 then return end
+        if not id or id == 0 then
+            return
+        end
         local anim = Instance.new("Animation")
         anim.AnimationId = string.format("rbxassetid://%d", id)
         anim.Name = name
@@ -260,12 +291,11 @@ local function setupAnimator()
         end)
         tracks[name] = track
     end
-    load("Run", Animations.Run, {loop = true, priority = Enum.AnimationPriority.Movement})
-    load("Jump", Animations.Jump, {loop = false, priority = Enum.AnimationPriority.Action})
-    load("Fall", Animations.Fall, {loop = true, priority = Enum.AnimationPriority.Movement})
-    load("Slide", Animations.Slide, {loop = false, priority = Enum.AnimationPriority.Action})
+    load("Run", Animations.Run, { loop = true, priority = Enum.AnimationPriority.Movement })
+    load("Jump", Animations.Jump, { loop = false, priority = Enum.AnimationPriority.Action })
+    load("Fall", Animations.Fall, { loop = true, priority = Enum.AnimationPriority.Movement })
+    load("Slide", Animations.Slide, { loop = false, priority = Enum.AnimationPriority.Action })
 
-    local current: string? = nil
     local function play(name: string, fade: number, force: boolean?)
         local t = tracks[name]
         if current == name and not force then
@@ -290,27 +320,33 @@ local function setupAnimator()
 
     -- react to state changes
     hum.StateChanged:Connect(function(_, new)
-    -- Wenn wir sliden, ignorieren wir Zustandswechsel, die Run/Fall triggern würden
+        -- Wenn wir sliden, ignorieren wir Zustandswechsel, die Run/Fall triggern würden
         if os.clock() < math.max(rollingUntil, rollingUntilShared) then
             return
         end
-    if new == Enum.HumanoidStateType.Jumping then
+        if new == Enum.HumanoidStateType.Jumping then
             jumpGraceUntil = os.clock() + 0.3
             play("Jump", 0.05, true)
         elseif new == Enum.HumanoidStateType.Freefall then
             play("Fall", 0.05, true)
         elseif new == Enum.HumanoidStateType.Landed then
             -- Ensure fall/jump stop immediately on landing
-            if tracks["Fall"] then tracks["Fall"]:Stop(0.05) end
-            if tracks["Jump"] then tracks["Jump"]:Stop(0.05) end
+            if tracks["Fall"] then
+                tracks["Fall"]:Stop(0.05)
+            end
+            if tracks["Jump"] then
+                tracks["Jump"]:Stop(0.05)
+            end
             runGraceUntil = os.clock() + 0.3
             play("Run", 0.05, true)
-    elseif new == Enum.HumanoidStateType.Running or new == Enum.HumanoidStateType.RunningNoPhysics then
+        elseif new == Enum.HumanoidStateType.Running or new == Enum.HumanoidStateType.RunningNoPhysics then
             runGraceUntil = os.clock() + 0.3
             play("Run", 0.05, true)
         elseif new == Enum.HumanoidStateType.Seated then
             -- keep run stopped when seated
-            if tracks["Run"] then tracks["Run"]:Stop(0.1) end
+            if tracks["Run"] then
+                tracks["Run"]:Stop(0.1)
+            end
         end
     end)
 
@@ -318,14 +354,18 @@ local function setupAnimator()
     local lastPos: Vector3? = nil
     local smoothedSpeed = 0.0
     RunService.RenderStepped:Connect(function(dt)
-        if not char.Parent then return end
+        if not char.Parent then
+            return
+        end
         local hrp = char:FindFirstChild("HumanoidRootPart") :: BasePart?
-        if not hrp then return end
+        if not hrp then
+            return
+        end
         local pos = hrp.Position
         local speed = 0
-    if lastPos then
+        if lastPos then
             local delta = pos - lastPos
-            speed = Vector3.new(delta.X, 0, delta.Z).Magnitude / math.max(dt, 1/240)
+            speed = Vector3.new(delta.X, 0, delta.Z).Magnitude / math.max(dt, 1 / 240)
         end
         lastPos = pos
 
@@ -333,7 +373,7 @@ local function setupAnimator()
         local alpha = math.clamp(dt * 5, 0, 1) -- ~200ms time constant
         smoothedSpeed = smoothedSpeed + (speed - smoothedSpeed) * alpha
 
-    if hum.FloorMaterial ~= Enum.Material.Air then
+        if hum.FloorMaterial ~= Enum.Material.Air then
             -- Während Slide keine Run/Fall-Umschaltung auslösen; kein Auto-Replay,
             -- damit Slide/Jump sich nicht gegenseitig dauerhaft sperren
             if os.clock() < math.max(rollingUntil, rollingUntilShared) then
@@ -348,8 +388,12 @@ local function setupAnimator()
                 local stillInJumpGrace = jumpPlaying and (now < jumpGraceUntil)
                 local beyondLandingGrace = now > runGraceUntil
                 if not stillInJumpGrace and beyondLandingGrace then
-                    if tracks["Fall"] and tracks["Fall"].IsPlaying then tracks["Fall"]:Stop(0.05) end
-                    if tracks["Jump"] and tracks["Jump"].IsPlaying then tracks["Jump"]:Stop(0.05) end
+                    if tracks["Fall"] and tracks["Fall"].IsPlaying then
+                        tracks["Fall"]:Stop(0.05)
+                    end
+                    if tracks["Jump"] and tracks["Jump"].IsPlaying then
+                        tracks["Jump"]:Stop(0.05)
+                    end
                     play("Run", 0.06, true)
                 end
             else
@@ -381,59 +425,42 @@ local function setupAnimator()
     end)
 
     -- Optional: naive Slide visual (if no Slide anim). Slightly tilt/offset for 0.5s when S pressed
-    local hrp = (player.Character or player.CharacterAdded:Wait()):WaitForChild("HumanoidRootPart") :: BasePart
     UserInputService.InputBegan:Connect(function(input, gpe)
         -- Für W/S lokale Animationen auch dann erlauben, wenn das Event via CAS gesunken wurde
-        if gpe and not (input.KeyCode == Enum.KeyCode.W or input.KeyCode == Enum.KeyCode.S) then return end
+        if gpe and not (input.KeyCode == Enum.KeyCode.W or input.KeyCode == Enum.KeyCode.S) then
+            return
+        end
         local grounded = hum.FloorMaterial ~= Enum.Material.Air
         if input.KeyCode == Enum.KeyCode.S then
             -- Während aktiver Slide keine erneute Auslösung / kein SFX
             if os.clock() < math.max(rollingUntil, rollingUntilShared) then
                 return
             end
-            -- Slide nur am Boden starten
-            if grounded then
-                local duration = (Constants.PLAYER and Constants.PLAYER.RollDuration) or 0.6
-                rollingUntil = os.clock() + duration
-                rollingUntilShared = rollingUntil
-                -- Wechsel auf Slide: evtl. laufenden Jump abbrechen und Grace zurücksetzen
-                jumpGraceUntil = 0
-                if tracks["Jump"] and tracks["Jump"].IsPlaying then
-                    tracks["Jump"]:Stop(0.05)
-                end
-                if tracks["Fall"] and tracks["Fall"].IsPlaying then
-                    tracks["Fall"]:Stop(0.05)
-                end
-                if tracks["Slide"] then
-                    play("Slide", 0.05, true)
-                end
-            else
-                -- In der Luft: Der Server bricht Jump sofort ab und startet Roll; spiegle das lokal direkt
-                local duration = (Constants.PLAYER and Constants.PLAYER.RollDuration) or 0.6
-                rollingUntil = os.clock() + duration
-                rollingUntilShared = rollingUntil
-                -- Stoppe Jump/Fall sofort und spiele Slide
-                jumpGraceUntil = 0
-                if tracks["Jump"] and tracks["Jump"].IsPlaying then tracks["Jump"]:Stop(0.05) end
-                if tracks["Fall"] and tracks["Fall"].IsPlaying then tracks["Fall"]:Stop(0.05) end
-                if tracks["Slide"] then play("Slide", 0.05, true) end
+            -- Slide starten: Boden/Luft identisch behandeln (Server spiegelt dies)
+            local duration = (Constants.PLAYER and Constants.PLAYER.RollDuration) or 0.6
+            rollingUntil = os.clock() + duration
+            rollingUntilShared = rollingUntil
+            -- Stoppe Jump/Fall und spiele Slide
+            jumpGraceUntil = 0
+            if tracks["Jump"] and tracks["Jump"].IsPlaying then
+                tracks["Jump"]:Stop(0.05)
+            end
+            if tracks["Fall"] and tracks["Fall"].IsPlaying then
+                tracks["Fall"]:Stop(0.05)
+            end
+            if tracks["Slide"] then
+                play("Slide", 0.05, true)
             end
         elseif input.KeyCode == Enum.KeyCode.W then
-            -- Jump sofort lokal triggern (Responsiveness), nur am Boden und nicht während Roll
-            if grounded and os.clock() >= math.max(rollingUntil, rollingUntilShared) then
+            -- Jump sofort lokal triggern (Responsiveness): am Boden ODER während aktiver Slide
+            local slidingNow = os.clock() < math.max(rollingUntil, rollingUntilShared)
+            if grounded or slidingNow then
                 -- Wechsel auf Jump: Slide sofort freigeben und evtl. Track stoppen
                 rollingUntil = 0
                 rollingUntilShared = 0
                 if tracks["Slide"] and tracks["Slide"].IsPlaying then
                     tracks["Slide"]:Stop(0.05)
                 end
-                jumpGraceUntil = os.clock() + 0.3
-                play("Jump", 0.05, true)
-            elseif os.clock() < math.max(rollingUntil, rollingUntilShared) then
-                -- Während Slide ersetzt W sofort Slide durch Jump (spiegele Serverlogik)
-                rollingUntil = 0
-                rollingUntilShared = 0
-                if tracks["Slide"] and tracks["Slide"].IsPlaying then tracks["Slide"]:Stop(0.05) end
                 jumpGraceUntil = os.clock() + 0.3
                 play("Jump", 0.05, true)
             end
@@ -459,21 +486,31 @@ local function setupAnimator()
     if ActionSync then
         ActionSync.OnClientEvent:Connect(function(info)
             local action = info and info.action
-            if not action then return end
+            if not action then
+                return
+            end
             if action == "Roll" then
                 local duration = (Constants.PLAYER and Constants.PLAYER.RollDuration) or 0.6
                 rollingUntil = os.clock() + duration
                 rollingUntilShared = rollingUntil
                 -- Stoppe Jump/Fall und spiele Slide
                 jumpGraceUntil = 0
-                if tracks["Jump"] and tracks["Jump"].IsPlaying then tracks["Jump"]:Stop(0.05) end
-                if tracks["Fall"] and tracks["Fall"].IsPlaying then tracks["Fall"]:Stop(0.05) end
-                if tracks["Slide"] then play("Slide", 0.05, true) end
+                if tracks["Jump"] and tracks["Jump"].IsPlaying then
+                    tracks["Jump"]:Stop(0.05)
+                end
+                if tracks["Fall"] and tracks["Fall"].IsPlaying then
+                    tracks["Fall"]:Stop(0.05)
+                end
+                if tracks["Slide"] then
+                    play("Slide", 0.05, true)
+                end
                 playSfx((Constants.AUDIO and Constants.AUDIO.SlideSoundIds) or {}, "SlideSFX", 0.6)
             elseif action == "Jump" then
                 rollingUntil = 0
                 rollingUntilShared = 0
-                if tracks["Slide"] and tracks["Slide"].IsPlaying then tracks["Slide"]:Stop(0.05) end
+                if tracks["Slide"] and tracks["Slide"].IsPlaying then
+                    tracks["Slide"]:Stop(0.05)
+                end
                 jumpGraceUntil = os.clock() + 0.3
                 play("Jump", 0.05, true)
                 playSfx((Constants.AUDIO and Constants.AUDIO.JumpSoundIds) or {}, "JumpSFX", 0.6)
@@ -500,15 +537,16 @@ local function enforceSingleHUD()
     end
 
     -- Prefer adopting an existing HUD if ours isn't resolved yet
-    local ours = cachedHUD or (function()
-        local h = sg:FindFirstChild("HUD")
-        if h and h:IsA("ScreenGui") then
-            cachedHUD = h
-            h:SetAttribute("EndlessHUD", true)
-            return h
-        end
-        return nil
-    end)()
+    local ours = cachedHUD
+        or (function()
+            local h = sg:FindFirstChild("HUD")
+            if h and h:IsA("ScreenGui") then
+                cachedHUD = h
+                h:SetAttribute("EndlessHUD", true)
+                return h
+            end
+            return nil
+        end)()
 
     -- Remove duplicates immediately
     if ours then
@@ -525,7 +563,9 @@ local function enforceSingleHUD()
             local current = cachedHUD or child
             if current ~= child and child.Parent == sg then
                 task.defer(function()
-                    if child.Parent == sg then child:Destroy() end
+                    if child.Parent == sg then
+                        child:Destroy()
+                    end
                 end)
             else
                 -- If we had none, adopt this one
@@ -560,17 +600,17 @@ local function ensureHUD(): ScreenGui
         lbl.TextColor3 = Color3.new(1, 1, 1)
         lbl.Font = Enum.Font.GothamBold
         lbl.TextScaled = true
-        lbl.Size = UDim2.new(0, 160, 0, 40)
+        lbl.Size = UDim2.fromOffset(160, 40)
         lbl.Position = pos
         lbl.Parent = hud
         return lbl
     end
 
-    makeLabel("Distance", UDim2.new(0, 20, 0, 20)).Text = "0m"
-    makeLabel("Coins", UDim2.new(0, 20, 0, 70)).Text = "0"
-    makeLabel("Speed", UDim2.new(0, 20, 0, 120)).Text = "0"
-    makeLabel("Magnet", UDim2.new(0, 20, 0, 170)).Text = ""
-    makeLabel("Shield", UDim2.new(0, 20, 0, 220)).Text = ""
+    makeLabel("Distance", UDim2.fromOffset(20, 20)).Text = "0m"
+    makeLabel("Coins", UDim2.fromOffset(20, 70)).Text = "0"
+    makeLabel("Speed", UDim2.fromOffset(20, 120)).Text = "0"
+    makeLabel("Magnet", UDim2.fromOffset(20, 170)).Text = ""
+    makeLabel("Shield", UDim2.fromOffset(20, 220)).Text = ""
 
     cachedHUD = hud
     cachedDist = hud:FindFirstChild("Distance") :: TextLabel?
@@ -585,7 +625,9 @@ end
 enforceSingleHUD()
 
 local function resolveHUD(): ScreenGui?
-    if cachedHUD and cachedHUD.Parent then return cachedHUD end
+    if cachedHUD and cachedHUD.Parent then
+        return cachedHUD
+    end
     local sg = player:WaitForChild("PlayerGui")
     local hud = sg:FindFirstChild("HUD")
     if not hud then
@@ -604,7 +646,9 @@ end
 
 local function resolveLabels()
     local hud = resolveHUD()
-    if not hud then return end
+    if not hud then
+        return
+    end
     if not (cachedDist and cachedDist.Parent == hud) then
         cachedDist = hud:FindFirstChild("Distance") :: TextLabel?
     end
@@ -623,7 +667,12 @@ local function resolveLabels()
 end
 
 UpdateHUD.OnClientEvent:Connect(function(payload)
-    print("[Client] UpdateHUD received", payload and payload.distance, payload and payload.coins, payload and payload.speed)
+    print(
+        "[Client] UpdateHUD received",
+        payload and payload.distance,
+        payload and payload.coins,
+        payload and payload.speed
+    )
     resolveLabels()
     local hud = resolveHUD()
     if not hud then
@@ -635,9 +684,15 @@ UpdateHUD.OnClientEvent:Connect(function(payload)
         warn("[Client] HUD ScreenGui not available")
         return
     end
-    if cachedDist and cachedDist:IsA("TextLabel") then cachedDist.Text = string.format("%dm", payload.distance or 0) end
-    if cachedCoins and cachedCoins:IsA("TextLabel") then cachedCoins.Text = string.format("%d", payload.coins or 0) end
-    if cachedSpeed and cachedSpeed:IsA("TextLabel") then cachedSpeed.Text = string.format("%d", payload.speed or 0) end
+    if cachedDist and cachedDist:IsA("TextLabel") then
+        cachedDist.Text = string.format("%dm", payload.distance or 0)
+    end
+    if cachedCoins and cachedCoins:IsA("TextLabel") then
+        cachedCoins.Text = string.format("%d", payload.coins or 0)
+    end
+    if cachedSpeed and cachedSpeed:IsA("TextLabel") then
+        cachedSpeed.Text = string.format("%d", payload.speed or 0)
+    end
     if cachedMagnet and cachedMagnet:IsA("TextLabel") then
         local secs = math.max(0, (payload.magnet or 0))
         cachedMagnet.Text = secs > 0 and string.format("Magnet: %.0fs", secs) or ""
@@ -651,11 +706,15 @@ end)
 -- Coin pickup SFX (local)
 do
     local function buildAssetUri(idNumber: number?): string
-        if not idNumber or idNumber == 0 then return "" end
+        if not idNumber or idNumber == 0 then
+            return ""
+        end
         return string.format("rbxassetid://%d", idNumber)
     end
-    local function playFirst(ids: {number}?, name: string, volume: number)
-        if not ids or #ids == 0 then return end
+    local function playFirst(ids: { number }?, name: string, volume: number)
+        if not ids or #ids == 0 then
+            return
+        end
         -- Erzeuge pro Name einen flüchtigen Sound (kein Reuse, um ID-Wechsel zu respektieren)
         for _, id in ipairs(ids) do
             if typeof(id) == "number" and id > 0 then
@@ -668,10 +727,16 @@ do
                     SoundService:PlayLocalSound(s)
                 end)
                 if ok then
-                    task.delay(2, function() if s and s.Parent then s:Destroy() end end)
+                    task.delay(2, function()
+                        if s and s.Parent then
+                            s:Destroy()
+                        end
+                    end)
                     return
                 else
-                    if s then s:Destroy() end
+                    if s then
+                        s:Destroy()
+                    end
                 end
             end
         end
@@ -692,9 +757,13 @@ GameOver.OnClientEvent:Connect(function()
     task.spawn(function()
         local ids = (Constants.AUDIO and Constants.AUDIO.CrashSoundIds) or {}
         local played = false
-        local function tryPlayList(list: {number}?, name: string, volume: number)
-            if played then return end
-            if not list or #list == 0 then return end
+        local function tryPlayList(list: { number }?, name: string, volume: number)
+            if played then
+                return
+            end
+            if not list or #list == 0 then
+                return
+            end
             for _, id in ipairs(list) do
                 if typeof(id) == "number" and id > 0 then
                     local s = Instance.new("Sound")
@@ -707,10 +776,16 @@ GameOver.OnClientEvent:Connect(function()
                     end)
                     if ok then
                         played = true
-                        task.delay(2, function() if s and s.Parent then s:Destroy() end end)
+                        task.delay(2, function()
+                            if s and s.Parent then
+                                s:Destroy()
+                            end
+                        end)
                         return
                     else
-                        if s then s:Destroy() end
+                        if s then
+                            s:Destroy()
+                        end
                     end
                 end
             end
@@ -718,12 +793,18 @@ GameOver.OnClientEvent:Connect(function()
         -- 1) Crash-Kandidaten
         tryPlayList(ids, "CrashSFX", 0.8)
         -- 2) Fallback: Powerup-Kandidaten
-        if not played then tryPlayList((Constants.AUDIO and Constants.AUDIO.PowerupSoundIds) or {}, "CrashFallbackPowerup", 0.7) end
+        if not played then
+            tryPlayList((Constants.AUDIO and Constants.AUDIO.PowerupSoundIds) or {}, "CrashFallbackPowerup", 0.7)
+        end
         -- 3) Fallback: Coin-Kandidaten
-        if not played then tryPlayList((Constants.AUDIO and Constants.AUDIO.CoinSoundIds) or {}, "CrashFallbackCoin", 0.6) end
+        if not played then
+            tryPlayList((Constants.AUDIO and Constants.AUDIO.CoinSoundIds) or {}, "CrashFallbackCoin", 0.6)
+        end
     end)
     local playerGui = player:WaitForChild("PlayerGui")
-    if playerGui:FindFirstChild("GameOverOverlay") then return end
+    if playerGui:FindFirstChild("GameOverOverlay") then
+        return
+    end
 
     local overlay = Instance.new("ScreenGui")
     overlay.Name = "GameOverOverlay"
@@ -731,8 +812,8 @@ GameOver.OnClientEvent:Connect(function()
 
     local frame = Instance.new("Frame")
     frame.AnchorPoint = Vector2.new(0.5, 0.5)
-    frame.Position = UDim2.new(0.5, 0, 0.5, 0)
-    frame.Size = UDim2.new(0, 300, 0, 200)
+    frame.Position = UDim2.fromScale(0.5, 0.5)
+    frame.Size = UDim2.fromOffset(300, 200)
     frame.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
     frame.Parent = overlay
 
@@ -755,7 +836,7 @@ GameOver.OnClientEvent:Connect(function()
 
     local menu = Instance.new("TextButton")
     menu.Size = UDim2.new(0.8, 0, 0, 40)
-    menu.Position = UDim2.new(0.1, 0, 0.5, 0)
+    menu.Position = UDim2.fromScale(0.1, 0.5)
     menu.Text = "Hauptmenü"
     menu.Font = Enum.Font.Gotham
     menu.TextScaled = true
@@ -787,12 +868,14 @@ end)
 
 -- Powerup Pickup Feedback (optional placeholder)
 if PowerupPickup then
-    PowerupPickup.OnClientEvent:Connect(function(info)
+    PowerupPickup.OnClientEvent:Connect(function(_info)
         -- SFX für Powerup
-        local ids = (Constants.AUDIO and Constants.AUDIO.PowerupSoundIds) or {}
-        local function playFirst(ids: {number}?, name: string, volume: number)
-            if not ids or #ids == 0 then return end
-            for _, id in ipairs(ids) do
+        local powerupIds = (Constants.AUDIO and Constants.AUDIO.PowerupSoundIds) or {}
+        local function playFirst(list: { number }?, name: string, volume: number)
+            if not list or #list == 0 then
+                return
+            end
+            for _, id in ipairs(list) do
                 if typeof(id) == "number" and id > 0 then
                     local s = Instance.new("Sound")
                     s.Name = name
@@ -803,14 +886,20 @@ if PowerupPickup then
                         SoundService:PlayLocalSound(s)
                     end)
                     if ok then
-                        task.delay(2, function() if s and s.Parent then s:Destroy() end end)
+                        task.delay(2, function()
+                            if s and s.Parent then
+                                s:Destroy()
+                            end
+                        end)
                         return
                     else
-                        if s then s:Destroy() end
+                        if s then
+                            s:Destroy()
+                        end
                     end
                 end
             end
         end
-        playFirst(ids, "PowerupSFX", 0.6)
+        playFirst(powerupIds, "PowerupSFX", 0.6)
     end)
 end
