@@ -21,7 +21,6 @@ ServerScriptService = {
 }
 StarterPlayer = { 
     StarterPlayerScripts = { 
-        PlayerController = "src/StarterPlayer/StarterPlayerScripts/PlayerController.client.lua",
         AchievementFixLoader = "src/StarterPlayer/StarterPlayerScripts/AchievementFixLoader.client.lua",
         Client = "src/StarterPlayer/StarterPlayerScripts/Client.client.lua"
     } 

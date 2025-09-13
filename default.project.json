@@ -105,9 +105,6 @@
 			"$className": "StarterPlayer",
 			"StarterPlayerScripts": {
 				"$className": "StarterPlayerScripts",
-				"PlayerController": {
-					"$path": "src/StarterPlayer/StarterPlayerScripts/PlayerController.client.lua"
-				},
 				"AchievementFixLoader": {
 					"$path": "src/StarterPlayer/StarterPlayerScripts/AchievementFixLoader.client.lua"
 				},

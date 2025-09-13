@@ -17,7 +17,7 @@ export type ClassData = {
     StrengthGrowth: number,
     IntelligenceGrowth: number,
     DefenseGrowth: number,
-    Spells: {string},
+    Spells: { string },
     HealingBonus: number?,
     ManaRegenBonus: number?,
     AttackDamageBonus: number?,
@@ -88,7 +88,7 @@ ClassSystem.CLASSES = {
 
         AttackDamageBonus = 1.4, -- 40% mehr Nahkampfschaden
         AttackSpeedBonus = 1.2, -- 20% schnellere Angriffe
-        CriticalChance = 0.15 -- 15% Kritische Trefferchance
+        CriticalChance = 0.15, -- 15% Kritische Trefferchance
     },
 
     RangeDPS = {
@@ -138,7 +138,7 @@ ClassSystem.CLASSES = {
 
         MagicDamageBonus = 1.6, -- 60% mehr Zauber-Schaden
         ManaCostReduction = 0.8, -- 20% weniger Mana-Kosten
-        SpellCriticalChance = 0.2 -- 20% Kritische Zauber
+        SpellCriticalChance = 0.2, -- 20% Kritische Zauber
     },
 
     Tank = {
@@ -164,7 +164,7 @@ ClassSystem.CLASSES = {
         DamageReduction = 0.7, -- 30% Schadensreduzierung
         ThreatMultiplier = 2.0, -- Zieht Aufmerksamkeit der Gegner
         BlockChance = 0.25, -- 25% Block-Chance
-        HealthRegenBonus = 1.4 -- 40% schnellere Heilung
+        HealthRegenBonus = 1.4, -- 40% schnellere Heilung
     },
 }
 

@@ -7,6 +7,7 @@ local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 
 local ArenaConstants = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("ArenaConstants"))
+local EnemyAI = require(script.Parent:WaitForChild("EnemyAI"))
 
 -- Remotes
 local Remotes = ReplicatedStorage:WaitForChild("Remotes")
@@ -14,9 +15,10 @@ local MoveRequest = Remotes:WaitForChild("MoveRequest") :: RemoteEvent
 local CombatRequest = Remotes:WaitForChild("CombatRequest") :: RemoteEvent
 local CombatSync = Remotes:WaitForChild("CombatSync") :: RemoteEvent
 local UpdatePlayerHUD = Remotes:WaitForChild("UpdatePlayerHUD") :: RemoteEvent
-local _EnemyDeath = Remotes:WaitForChild("EnemyDeath") :: RemoteEvent -- Für später
-local _LootDrop = Remotes:WaitForChild("LootDrop") :: RemoteEvent -- Für später
-local _ArenaComplete = Remotes:WaitForChild("ArenaComplete") :: RemoteEvent -- Für später
+-- Diese Remotes werden in zukünftigen Updates verwendet
+-- local _EnemyDeath = Remotes:WaitForChild("EnemyDeath") :: RemoteEvent
+-- local _LootDrop = Remotes:WaitForChild("LootDrop") :: RemoteEvent
+-- local _ArenaComplete = Remotes:WaitForChild("ArenaComplete") :: RemoteEvent
 
 -- Typen
 export type PlayerState = {
@@ -237,8 +239,7 @@ local function spawnWave(arena: ArenaState)
         local spawnPos = arena.Center
             + Vector3.new(math.cos(spawnAngle) * spawnRadius, 5, math.sin(spawnAngle) * spawnRadius)
 
-        -- Lade EnemyAI-System
-        local EnemyAI = require(script.Parent:WaitForChild("EnemyAI"))
+        -- Spawne Gegner mit EnemyAI-System
         local enemy = EnemyAI.spawnEnemy(enemyType, spawnPos, arena.Id)
 
         if enemy then
@@ -415,7 +416,6 @@ CombatRequest.OnServerEvent:Connect(function(player: Player, action: string, tar
                                 local distance = (enemyHRP.Position - hrp.Position).Magnitude
                                 if distance <= ArenaConstants.COMBAT.AttackRange then
                                     -- Füge Schaden zu
-                                    local EnemyAI = require(script.Parent:WaitForChild("EnemyAI"))
                                     EnemyAI.damageEnemy(enemyModel, damage)
 
                                     print(
