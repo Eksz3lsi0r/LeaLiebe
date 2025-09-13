@@ -1,0 +1,19 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Rojo: Live Sync to Studio",
+      "type": "node",
+      "request": "launch",
+      "program": "${workspaceFolder}/node_modules/.bin/rojo",
+      "args": ["serve", "--port", "34872"],
+      "console": "integratedTerminal",
+      "internalConsoleOptions": "neverOpen",
+      "presentation": {
+        "hidden": false,
+        "group": "rojo",
+        "order": 1
+      }
+    }
+  ]
+}

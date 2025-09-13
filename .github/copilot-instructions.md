@@ -1,13 +1,15 @@
 ## Copilot-Anleitung für dieses Repo
 
-Ziel: KI-Agents schnell produktiv machen für diesen Roblox + Rojo Endless Runner. Nur projektspezifische, verlässliche Muster – kurz und konkret.
+**PROJEKT-PIVOT: Von Endless Runner zu Mini Arena RPG (13.09.2025)**
 
-### Überblick
-- Architektur: Server-autoritativer Runner, Client nur Input/FX.
-  - Server (`src/ServerScriptService/Main.server.lua`): Heartbeat-Loop für Vortrieb, Spur-Lerp, einfache Vertikalphysik, prozeduraler Track (Spawn/Cleanup), Kollisionen, Score/HUD, Powerups.
-  - Client (`src/StarterPlayer/StarterPlayerScripts/Client.client.lua`): Input (Tastatur/Swipe), Kamera-Follow, lokaler Animator, HUD-Wiring, SFX.
-  - Shared (`src/ReplicatedStorage/Shared/{Constants.lua,Animations.lua}`).
-- Rojo-Datenmodell: `default.project.json` (authoritativ), `rojo.toml` konsistent halten. Pro Spieler: `Workspace/Tracks/<UserId>/Seg_%04d`.
+Ziel: KI-Agents schnell produktiv machen für dieses Roblox + Rojo Arena RPG. Nur projektspezifische, verlässliche Muster – kurz und konkret.
+
+### Überblick (NEU: Arena RPG)
+- Architektur: Server-autoritatives Combat-System, Client nur Input/VFX.
+  - Server (`src/ServerScriptService/GameSetup.server.lua` + neue Combat-Scripts): Arena-Management, Combat-Loop, Health/Mana-System, AI-Gegner, Loot-Drops, Matchmaking.
+  - Client (`src/StarterPlayer/StarterPlayerScripts/PlayerController.client.lua`): Combat Input (Attack/Block/Cast/Move), Kamera-Steuerung, Animation-Controller, Combat-VFX.
+  - Shared (`src/ReplicatedStorage/Shared/{Constants.lua,Animations.lua}`): Combat-Stats, Spell-Configs, Damage-Formeln.
+- Rojo-Datenmodell: `default.project.json` (authoritativ). Arena-Struktur: `Workspace/Arenas/<ArenaId>/`, Spieler-Instanzen unter `Workspace/Players/<UserId>/`.
 
 ### Workflow
 - Start lokal: VS Code Task „Rojo: Serve“ starten und in Studio mit Plugin zu `localhost:34872` verbinden; Play.
@@ -21,21 +23,21 @@ Ziel: KI-Agents schnell produktiv machen für diesen Roblox + Rojo Endless Runne
 - Eingabefeedback <80 ms: SFX/Anim lokal am Client, Server sync via ActionSync.
 - Speicher: Track-Cleanup konsequent; Pooling evaluieren (Mobile <350 MB).
 
-### Spielregeln & Konventionen
-- Lanes: `Constants.LANES = {-5, 0, 5}`, Start Mitte (Index 2). HRP dauerhaft 180° gedreht (blickt +Z).
-- Spurwechsel: `LaneRequest(dir)` mit links=+1, rechts=-1 (bewusst invertiert, nicht ändern).
-- Bewegung: Server besitzt NetworkOwner; Speed beschleunigt von `PLAYER.BaseSpeed` bis `MaxSpeed`; lateral Lerp mit `LaneSwitchSpeed`.
-- Jump/Roll: einfache Gravitation; Roll mit kurzem Vorwärtsschub `PLAYER.RollBoost` und niedrigerer AABB.
-- Track: `SPAWN.SegmentLength`, `ViewDistance`, Cleanup mit `CleanupBehind`; Segmente heißen `Seg_%04d`.
-- Kollisionen: AABB-Scan 2 Studs vor HRP; Coins/Powerups via Attribute (`Powerup.Kind = "Magnet"|"Shield"`).
+### Spielregeln & Konventionen (NEU: Arena RPG)
+- Arena: Feste runde/rechteckige Arena, ~50x50 Studs. Spawn-Points für Spieler und Gegner definiert.
+- Bewegung: Server besitzt NetworkOwner; freie 3D-Bewegung statt Lane-System. Standardgeschwindigkeit `PLAYER.MoveSpeed`.
+- Combat: Melee (Schwert/Axt), Ranged (Bogen/Zauber), Block/Parry-System. Attack/Block über `CombatRequest`.
+- Health/Mana: Server autoritativ; Client zeigt Bars. Health-Regeneration außerhalb Kampf.
+- Gegner-AI: Finite State Machine (Idle/Chase/Attack/Retreat), A*-Pathfinding für Navigation.
+- Loot: Drops nach Gegnertod, Equipment-Slots (Weapon/Armor/Accessory), Stats-Modifikation.
 
-### Remotes (ReplicatedStorage/Remotes)
-- `LaneRequest:FireServer(dir:number)` — Spurwechsel (links=+1, rechts=-1).
-- `ActionRequest:FireServer("Jump"|"Roll")` — Eingaben.
-- `ActionSync:FireClient(player,{action="Jump"|"Roll"})` — Server→Client Sync für lokale Animationen.
-- `UpdateHUD:FireClient(player,{distance,coins,speed,magnet?,shield?})` — getaktet ~0,15s + bei Events.
-- `CoinPickup`, `PowerupPickup`, `GameOver`, `RestartRequest` — SFX/Feedback/Reset.
-- Shop: `ShopPurchaseRequest:FireServer(itemId:string)` → `ShopResult:FireClient(player,{ok:boolean,msg:string,coins:number})`.
+### Remotes (ReplicatedStorage/Remotes) - NEU: Combat-System
+- `MoveRequest:FireServer(direction:Vector3)` — Bewegungsrichtung.
+- `CombatRequest:FireServer(action:"Attack"|"Block"|"Cast", target?:Instance, spellId?:string)` — Combat-Aktionen.
+- `CombatSync:FireClient(player,{action,target,damage?,effect?})` — Server→Client Combat-Feedback.
+- `UpdatePlayerHUD:FireClient(player,{health,mana,stamina,cooldowns})` — getaktet ~0,15s.
+- `EnemyDeath`, `LootDrop`, `ArenaComplete`, `MatchmakingQueue` — Events und Status-Updates.
+- Shop: `EquipmentPurchase:FireServer(itemId:string)` → `EquipmentResult:FireClient(player,{success,item?,gold})`.
 
 ### Client-Muster
 - Input: A/D oder Pfeile → `LaneRequest`; W/Space → Jump; S → Roll; Mobile Swipes; `ContextActionService` bindet W/S (hohe Priorität, sink) und deaktiviert Default Controls.

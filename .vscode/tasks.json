@@ -1,0 +1,130 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Rojo: Serve",
+			"type": "shell",
+			"command": "./run-with-aftman.sh",
+			"args": [
+				"rojo",
+				"serve",
+				"--port",
+				"34872"
+			],
+			"group": "build",
+			"presentation": {
+				"echo": true,
+				"reveal": "always",
+				"focus": false,
+				"panel": "shared",
+				"showReuseMessage": true,
+				"clear": false
+			},
+			"isBackground": true,
+			"problemMatcher": [],
+			"runOptions": {
+				"runOn": "folderOpen"
+			},
+			"detail": "Startet Rojo Server auf Port 34872 für Studio-Synchronisation"
+		},
+		{
+			"label": "Rojo: Sourcemap",
+			"type": "shell",
+			"command": "./run-with-aftman.sh",
+			"args": [
+				"rojo",
+				"sourcemap",
+				"--output",
+				"sourcemap.json"
+			],
+			"group": "build",
+			"presentation": {
+				"echo": true,
+				"reveal": "silent",
+				"focus": false,
+				"panel": "shared"
+			},
+			"problemMatcher": [],
+			"detail": "Generiert sourcemap.json für Luau Language Server"
+		},
+		{
+			"label": "Rojo: Build",
+			"type": "shell",
+			"command": "./run-with-aftman.sh",
+			"args": [
+				"rojo",
+				"build",
+				"--output",
+				"build.rbxl"
+			],
+			"group": "build",
+			"presentation": {
+				"echo": true,
+				"reveal": "always",
+				"focus": false,
+				"panel": "shared"
+			},
+			"problemMatcher": [],
+			"detail": "Erstellt build.rbxl Datei für Standalone-Testing"
+		},
+		{
+			"label": "Lint: Selene",
+			"type": "shell",
+			"command": "./run-with-aftman.sh",
+			"args": [
+				"selene",
+				"src/"
+			],
+			"group": "test",
+			"presentation": {
+				"echo": true,
+				"reveal": "always",
+				"focus": false,
+				"panel": "shared"
+			},
+			"problemMatcher": [],
+			"detail": "Führt Selene Linter auf src/ Verzeichnis aus"
+		},
+		{
+			"label": "Format: StyLua",
+			"type": "shell",
+			"command": "./run-with-aftman.sh",
+			"args": [
+				"stylua",
+				"src/",
+				"test/"
+			],
+			"group": "build",
+			"presentation": {
+				"echo": true,
+				"reveal": "silent",
+				"focus": false,
+				"panel": "shared"
+			},
+			"problemMatcher": [],
+			"detail": "Formatiert Lua-Code mit StyLua"
+		},
+		{
+			"label": "Build: Complete",
+			"dependsOrder": "sequence",
+			"dependsOn": [
+				"Format: StyLua",
+				"Lint: Selene",
+				"Rojo: Sourcemap",
+				"Rojo: Build",
+				"Rojo: Serve"
+			],
+			"group": {
+				"kind": "build",
+				"isDefault": true
+			},
+			"presentation": {
+				"echo": true,
+				"reveal": "always",
+				"focus": false,
+				"panel": "shared"
+			},
+			"detail": "Führt kompletten Build-Prozess aus: Format → Lint → Sourcemap → Build → Serve"
+		}
+	]
+}

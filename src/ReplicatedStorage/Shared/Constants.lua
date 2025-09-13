@@ -32,11 +32,25 @@ Constants.SPAWN = {
     PowerupChance = 0.06, -- Chance auf ein Powerup (Magnet oder Schild)
     -- Deko-Wahrscheinlichkeit pro Segment (separate, optionale Spawns außerhalb der Lanes)
     DecoChance = 0.28, -- etwas reduziert, weniger Clutter an den Rändern
+    -- Erweiterte Patterns (zusätzlich zu Einzelspawns), werden pro Segment probabilistisch geprüft
+    Patterns = {
+        CoinLine = 0.28, -- gerade Coin-Linie (6–8 Coins)
+        CoinZigZag = 0.14, -- Coins wechseln die Lane (Zickzack)
+        LaneBlocker = 0.10, -- zwei Lanes blockiert, eine frei
+        Mover = 0.10, -- bewegliches Hindernis (Seitwärts-Oszillator in einer Lane)
+    },
 }
 
 Constants.COLLISION = {
     ObstacleDamage = 1, -- simple hit value; can be expanded
     CoinValue = 1,
+}
+
+-- Scoring/Multiplikator (beeinflusst Coins pro Pickup)
+Constants.SCORE = {
+    StreakStep = 10, -- alle X Coins steigt der Multiplikator
+    MultiplierPerStep = 0.1, -- Zuwachs pro Step
+    MaxMultiplier = 3.0, -- Obergrenze
 }
 
 -- Dynamische Events (z. B. Double Coins)

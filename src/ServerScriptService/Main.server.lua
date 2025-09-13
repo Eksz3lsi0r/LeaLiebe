@@ -1,10 +1,11 @@
 --!strict
 -- Server-side game loop & procedural generation
 
+local DataStoreService = game:GetService("DataStoreService")
+local Lighting = game:GetService("Lighting")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
-local DataStoreService = game:GetService("DataStoreService")
 
 -- Konfiguration (Shared): hält Gameplay-Parameter; keine direkten Mutationen aus dem Servercode
 local Constants = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Constants")) :: {
@@ -45,6 +46,8 @@ local Constants = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild(
             }
         },
     },
+    DEBUG_LOGS: boolean?,
+    SCORE: { StreakStep: number?, MultiplierPerStep: number?, MaxMultiplier: number? }?,
 }
 
 -- Testbare Hilfsfunktionen
@@ -59,15 +62,23 @@ type HUDPayload = {
     shield: number?,
     shieldTime: number?,
     doubleCoins: number?,
+    multiplier: number?,
 }
 
 -- Vorwärtsdeklaration, damit Funktionen, die spawnSegment aufrufen, die lokale Variable erfassen
 local spawnSegment: (player: Player, segmentIndex: number, baseZ: number) -> ()
 
 -- Remotes
-local RemotesFolder = ReplicatedStorage:FindFirstChild("Remotes") or Instance.new("Folder")
-RemotesFolder.Name = "Remotes"
-RemotesFolder.Parent = ReplicatedStorage
+local RemotesFolderAny = ReplicatedStorage:FindFirstChild("Remotes")
+local RemotesFolder: Folder
+if not RemotesFolderAny or not RemotesFolderAny:IsA("Folder") then
+    local f = Instance.new("Folder")
+    f.Name = "Remotes"
+    f.Parent = ReplicatedStorage
+    RemotesFolder = f
+else
+    RemotesFolder = RemotesFolderAny
+end
 
 local LaneRequest = Instance.new("RemoteEvent")
 LaneRequest.Name = "LaneRequest"
@@ -151,6 +162,11 @@ export type PlayerState = {
     -- Reusable query params to avoid per-frame allocations
     OverlapParams: OverlapParams?,
     OverlapFilter: { Instance }?,
+    -- Scoring
+    CoinStreak: number?,
+    Multiplier: number?,
+    -- Bewegliche Hindernisse im eigenen Track (leichtgewichtige Liste)
+    Movers: { { part: BasePart, baseX: number, amp: number, freq: number, phase: number } }?,
 }
 
 local state: { [Player]: PlayerState } = {}
@@ -214,7 +230,7 @@ end
 local function savePlayerData(player: Player, reason: string?)
     local s = state[player]
     local uid = player.UserId
-    local cached = saveCache[uid] or { coins = 0, best = 0 }
+    local cached: SaveBlob = (saveCache[uid] :: SaveBlob?) or ({ coins = 0, best = 0 } :: SaveBlob)
     local currentBest = cached.best or 0
     local dist = 0
     if s then
@@ -326,10 +342,11 @@ local function getAnimator(hum: Humanoid): Animator?
     local animator = hum:FindFirstChildOfClass("Animator")
     if not animator then
         local ok, err = pcall(function()
-            animator = Instance.new("Animator")
-            animator.Parent = hum
+            local a = Instance.new("Animator")
+            a.Parent = hum
+            animator = a
         end)
-        if not ok then
+        if not ok or not animator then
             warn("[Server] Failed to create Animator:", err)
             return nil
         end
@@ -373,11 +390,15 @@ local function createRunnerFor(player: Player)
     -- Ensure network ownership stays server-side for authoritative movement
     hrp:SetNetworkOwner(nil)
 
-    local folder = workspace:FindFirstChild("Tracks")
-    if not folder then
-        folder = Instance.new("Folder")
-        folder.Name = "Tracks"
-        folder.Parent = workspace
+    local folderAny = workspace:FindFirstChild("Tracks")
+    local folder: Folder
+    if not folderAny or not folderAny:IsA("Folder") then
+        local f = Instance.new("Folder")
+        f.Name = "Tracks"
+        f.Parent = workspace
+        folder = f
+    else
+        folder = folderAny
     end
 
     local playerFolder = Instance.new("Folder")
@@ -408,6 +429,9 @@ local function createRunnerFor(player: Player)
         ShieldUntil = 0,
         OverlapParams = nil,
         OverlapFilter = nil,
+        CoinStreak = 0,
+        Multiplier = 1.0,
+        Movers = {},
     }
 
     -- Place runner at start position (180° gedreht, Rücken zur Kamera)
@@ -438,6 +462,20 @@ local function createRunnerFor(player: Player)
     UpdateHUD:FireClient(player, initialPayload)
 end
 
+-- Helper: sichere Score-Config mit Defaults
+local function getScoreCfg()
+    local scAny = Constants.SCORE :: any
+    local step = 10
+    local mulPer = 0.1
+    local maxMul = 3.0
+    if typeof(scAny) == "table" then
+        step = tonumber(scAny.StreakStep) or step
+        mulPer = tonumber(scAny.MultiplierPerStep) or mulPer
+        maxMul = tonumber(scAny.MaxMultiplier) or maxMul
+    end
+    return { StreakStep = step, MultiplierPerStep = mulPer, MaxMultiplier = maxMul }
+end
+
 local function cleanupPlayer(player: Player)
     local s = state[player]
     if s and s.Folder then
@@ -447,7 +485,7 @@ local function cleanupPlayer(player: Player)
 end
 
 -- Object Pools
-local function createObstacle()
+local function createObstacle(): BasePart
     local p = Instance.new("Part")
     p.Size = Vector3.new(4, 6, 4)
     p.Anchored = true
@@ -456,10 +494,10 @@ local function createObstacle()
     p.TopSurface = Enum.SurfaceType.Smooth
     p.BottomSurface = Enum.SurfaceType.Smooth
     p.CanCollide = false
-    return p
+    return p :: BasePart
 end
 
-local function createObstacleTall()
+local function createObstacleTall(): BasePart
     local p = Instance.new("Part")
     p.Size = Vector3.new(4, 9, 4)
     p.Anchored = true
@@ -468,10 +506,10 @@ local function createObstacleTall()
     p.TopSurface = Enum.SurfaceType.Smooth
     p.BottomSurface = Enum.SurfaceType.Smooth
     p.CanCollide = false
-    return p
+    return p :: BasePart
 end
 
-local function createObstacleLow()
+local function createObstacleLow(): BasePart
     local p = Instance.new("Part")
     p.Size = Vector3.new(4, 3, 4)
     p.Anchored = true
@@ -480,10 +518,10 @@ local function createObstacleLow()
     p.TopSurface = Enum.SurfaceType.Smooth
     p.BottomSurface = Enum.SurfaceType.Smooth
     p.CanCollide = false
-    return p
+    return p :: BasePart
 end
 
-local function createObstacleWide()
+local function createObstacleWide(): BasePart
     local p = Instance.new("Part")
     p.Size = Vector3.new(5.5, 5, 5.5) -- etwas breiter/tiefer innerhalb der Lane
     p.Anchored = true
@@ -492,10 +530,10 @@ local function createObstacleWide()
     p.TopSurface = Enum.SurfaceType.Smooth
     p.BottomSurface = Enum.SurfaceType.Smooth
     p.CanCollide = false
-    return p
+    return p :: BasePart
 end
 
-local function createOverhang()
+local function createOverhang(): BasePart
     -- Hängelnde Barriere, die nur im Duck/ Roll unterquert werden kann
     local p = Instance.new("Part")
     p.Size = Vector3.new(4, 2.2, 4)
@@ -505,10 +543,10 @@ local function createOverhang()
     p.TopSurface = Enum.SurfaceType.Smooth
     p.BottomSurface = Enum.SurfaceType.Smooth
     p.CanCollide = false
-    return p
+    return p :: BasePart
 end
 
-local function createCoin()
+local function createCoin(): BasePart
     local coin = Instance.new("Part")
     coin.Shape = Enum.PartType.Ball
     coin.Size = Vector3.new(2, 2, 2)
@@ -520,10 +558,10 @@ local function createCoin()
     coin.CanCollide = false
     coin.CanQuery = true
     coin.CanTouch = false
-    return coin
+    return coin :: BasePart
 end
 
-local function createPowerup(kind: string)
+local function createPowerup(kind: string): BasePart
     local p = Instance.new("Part")
     p.Shape = Enum.PartType.Ball
     p.Size = Vector3.new(2.5, 2.5, 2.5)
@@ -539,11 +577,11 @@ local function createPowerup(kind: string)
     else
         p.Color = Color3.fromRGB(120, 255, 120)
     end
-    return p
+    return p :: BasePart
 end
 
 -- Sehr einfache Deko-Bausteine (rein visuell, keine Kollision/Abfrage)
-local function createDeco(kind: string)
+local function createDeco(kind: string): BasePart
     local p = Instance.new("Part")
     p.Anchored = true
     p.CanCollide = false
@@ -565,7 +603,21 @@ local function createDeco(kind: string)
         p.Color = Color3.fromRGB(80, 80, 80)
         p.Material = Enum.Material.Metal
     end
-    return p
+    return p :: BasePart
+end
+
+-- Bewegliches Hindernis (seitliche Oszillation innerhalb einer Lane)
+local function createMovingObstacle(baseX: number, y: number, z: number): BasePart
+    local p = Instance.new("Part")
+    p.Size = Vector3.new(4, 5, 4)
+    p.Anchored = true
+    p.Color = Color3.fromRGB(210, 70, 70)
+    p.Name = "Obstacle"
+    p.TopSurface = Enum.SurfaceType.Smooth
+    p.BottomSurface = Enum.SurfaceType.Smooth
+    p.CanCollide = false
+    p.Position = Vector3.new(baseX, y, z)
+    return p :: BasePart
 end
 
 -- Biome Utils
@@ -586,7 +638,6 @@ local function applyLightingTheme(target: {
     fogEnd: number,
     clockTime: number,
 })
-    local Lighting = game:GetService("Lighting")
     Lighting.Ambient = toColor3(target.ambient)
     Lighting.OutdoorAmbient = toColor3(target.outdoorAmbient)
     Lighting.FogColor = toColor3(target.fogColor)
@@ -594,8 +645,7 @@ local function applyLightingTheme(target: {
     Lighting.ClockTime = target.clockTime
 end
 
-local function blendLighting(fromTheme, toTheme, duration: number)
-    local Lighting = game:GetService("Lighting")
+local function blendLighting(fromTheme: any, toTheme: any, duration: number)
     local start = os.clock()
     local fromAmb = toColor3(fromTheme.ambient)
     local toAmb = toColor3(toTheme.ambient)
@@ -603,15 +653,15 @@ local function blendLighting(fromTheme, toTheme, duration: number)
     local toOut = toColor3(toTheme.outdoorAmbient)
     local fromFog = toColor3(fromTheme.fogColor)
     local toFog = toColor3(toTheme.fogColor)
-    local fromEnd = fromTheme.fogEnd
-    local toEnd = toTheme.fogEnd
-    local fromClock = fromTheme.clockTime
-    local toClock = toTheme.clockTime
+    local fromEnd: number = fromTheme.fogEnd
+    local toEnd: number = toTheme.fogEnd
+    local fromClock: number = fromTheme.clockTime
+    local toClock: number = toTheme.clockTime
     while os.clock() - start < duration do
         local t = (os.clock() - start) / duration
-        Lighting.Ambient = fromAmb:lerp(toAmb, t)
-        Lighting.OutdoorAmbient = fromOut:lerp(toOut, t)
-        Lighting.FogColor = fromFog:lerp(toFog, t)
+        Lighting.Ambient = fromAmb:Lerp(toAmb, t)
+        Lighting.OutdoorAmbient = fromOut:Lerp(toOut, t)
+        Lighting.FogColor = fromFog:Lerp(toFog, t)
         Lighting.FogEnd = fromEnd + (toEnd - fromEnd) * t
         Lighting.ClockTime = fromClock + (toClock - fromClock) * t
         task.wait(0.05)
@@ -651,52 +701,145 @@ spawnSegment = function(player: Player, segmentIndex: number, baseZ: number)
         ground.Parent = segmentFolder
     end
 
-    -- Spawn obstacles/coins/powerups pro Lane (deterministisch via SpawnUtils)
-    for _, laneX in ipairs(Constants.LANES) do
-        local roll = math.random()
-        local z = baseZ + math.random(10, Constants.SPAWN.SegmentLength - 10)
-
-        local kindOpt = SpawnUtils.pickLaneContent(roll, {
-            OverhangChance = Constants.SPAWN.OverhangChance,
-            ObstacleChance = Constants.SPAWN.ObstacleChance,
-            CoinChance = Constants.SPAWN.CoinChance,
-            PowerupChance = Constants.SPAWN.PowerupChance,
-        })
-
-        if kindOpt == "Overhang" then
-            local o = createOverhang()
-            o.Position = Vector3.new(laneX, 3 + 1.4, z)
-            o.Parent = segmentFolder
-        elseif kindOpt == "Obstacle" then
-            -- Variante wählen (visuell, Kollision bleibt "Obstacle")
-            local r2 = math.random()
-            local o: BasePart
-            if r2 < 0.25 then
-                o = createObstacleTall()
-            elseif r2 < 0.5 then
-                o = createObstacleLow()
-            elseif r2 < 0.75 then
-                o = createObstacleWide()
-            else
-                o = createObstacle()
+    -- Pattern-Auswahl (max. ein Pattern pro Segment)
+    local function pickPattern(): string?
+        local patterns = (Constants.SPAWN and (Constants.SPAWN :: any).Patterns) or nil
+        if not patterns then
+            return nil
+        end
+        local entries = {
+            { name = "CoinLine", p = patterns.CoinLine or 0 },
+            { name = "CoinZigZag", p = patterns.CoinZigZag or 0 },
+            { name = "LaneBlocker", p = patterns.LaneBlocker or 0 },
+            { name = "Mover", p = patterns.Mover or 0 },
+        }
+        local sum = 0
+        for _, e in ipairs(entries) do
+            sum += math.max(0, e.p)
+        end
+        if sum <= 0 then
+            return nil
+        end
+        local r = math.random()
+        local acc = 0
+        for _, e in ipairs(entries) do
+            acc += (math.max(0, e.p) / sum)
+            if r < acc then
+                return e.name
             end
-            local halfY = o.Size.Y / 2
-            o.Position = Vector3.new(laneX, 3 + halfY - 0.5, z)
-            o.Parent = segmentFolder
-        elseif kindOpt == "Coin" then
+        end
+        return nil
+    end
+
+    local pattern = pickPattern()
+    local usedLanes: { [number]: boolean } = {}
+    if pattern == "CoinLine" then
+        local laneX = Constants.LANES[math.random(1, #Constants.LANES)]
+        local count = math.random(6, 8)
+        local startZ = baseZ + 10
+        local stepZ = (Constants.SPAWN.SegmentLength - 20) / count
+        for i = 0, count - 1 do
             local c = createCoin()
-            c.Position = Vector3.new(laneX, 4, z)
+            c.Position = Vector3.new(laneX, 4, startZ + i * stepZ)
             c.Parent = segmentFolder
-        elseif kindOpt == "Powerup" then
-            local pick = math.random()
-            local kind = SpawnUtils.pickPowerupKind(
-                pick,
-                (Constants.POWERUPS.Magnet.Weight or 1),
-                (Constants.POWERUPS.Shield.Weight or 1)
-            )
-            local pu = createPowerup(kind)
-            pu.Position = Vector3.new(laneX, 4, z)
-            pu.Parent = segmentFolder
+        end
+        usedLanes[laneX] = true
+    elseif pattern == "CoinZigZag" then
+        local order = { 1, 2, 3 }
+        if #Constants.LANES == 3 and math.random() < 0.5 then
+            order = { 3, 2, 1 }
+        end
+        local count = 9
+        local startZ = baseZ + 10
+        local stepZ = (Constants.SPAWN.SegmentLength - 20) / count
+        for i = 0, count - 1 do
+            local laneIndex = order[(i % #order) + 1]
+            local laneX = Constants.LANES[laneIndex]
+            local c = createCoin()
+            c.Position = Vector3.new(laneX, 4, startZ + i * stepZ)
+            c.Parent = segmentFolder
+        end
+    elseif pattern == "LaneBlocker" then
+        local freeIndex = math.random(1, #Constants.LANES)
+        local z = baseZ + math.random(18, Constants.SPAWN.SegmentLength - 18)
+        for i, laneX in ipairs(Constants.LANES) do
+            if i ~= freeIndex then
+                local r2 = math.random()
+                local o: BasePart
+                if r2 < 0.33 then
+                    o = createObstacleTall()
+                elseif r2 < 0.66 then
+                    o = createObstacleWide()
+                else
+                    o = createObstacle()
+                end
+                local halfY = o.Size.Y / 2
+                o.Position = Vector3.new(laneX, 3 + halfY - 0.5, z)
+                o.Parent = segmentFolder
+            end
+        end
+    elseif pattern == "Mover" then
+        local laneX = Constants.LANES[math.random(1, #Constants.LANES)]
+        local z = baseZ + math.random(18, Constants.SPAWN.SegmentLength - 18)
+        local o = createMovingObstacle(laneX, 3 + 2.5 - 0.5, z)
+        o.Parent = segmentFolder
+        -- Parametrisierung für Bewegung (kleine seitliche Oszillation innerhalb Lane)
+        local amp = 1.5
+        local freq = math.random(25, 60) / 100 -- 0.25 .. 0.60 Hz
+        local phase = math.random() * math.pi * 2
+        if s and s.Movers then
+            table.insert(s.Movers, { part = o, baseX = laneX, amp = amp, freq = freq, phase = phase })
+        end
+    end
+
+    if not pattern then
+        -- Spawn obstacles/coins/powerups pro Lane (deterministisch via SpawnUtils)
+        for _, laneX in ipairs(Constants.LANES) do
+            local roll = math.random()
+            local z = baseZ + math.random(10, Constants.SPAWN.SegmentLength - 10)
+
+            local kindOpt = SpawnUtils.pickLaneContent(roll, {
+                OverhangChance = Constants.SPAWN.OverhangChance,
+                ObstacleChance = Constants.SPAWN.ObstacleChance,
+                CoinChance = Constants.SPAWN.CoinChance,
+                PowerupChance = Constants.SPAWN.PowerupChance,
+            })
+
+            if kindOpt == "Overhang" then
+                local o = createOverhang()
+                o.Position = Vector3.new(laneX, 3 + 1.4, z)
+                o.Parent = segmentFolder
+            elseif kindOpt == "Obstacle" then
+                -- Variante wählen (visuell, Kollision bleibt "Obstacle")
+                local r2 = math.random()
+                local o: BasePart
+                if r2 < 0.25 then
+                    o = createObstacleTall()
+                elseif r2 < 0.5 then
+                    o = createObstacleLow()
+                elseif r2 < 0.75 then
+                    o = createObstacleWide()
+                else
+                    o = createObstacle()
+                end
+                local halfY = o.Size.Y / 2
+                o.Position = Vector3.new(laneX, 3 + halfY - 0.5, z)
+                o.Parent = segmentFolder
+            elseif kindOpt == "Coin" then
+                local c = createCoin()
+                c.Position = Vector3.new(laneX, 4, z)
+                c.Parent = segmentFolder
+            elseif kindOpt == "Powerup" then
+                local pick = math.random()
+                local kind = SpawnUtils.pickPowerupKind(
+                    pick,
+                    (Constants.POWERUPS.Magnet.Weight or 1),
+                    (Constants.POWERUPS.Shield.Weight or 1)
+                )
+                local pu = createPowerup(kind)
+                pu.Position = Vector3.new(laneX, 4, z)
+                pu.Parent = segmentFolder
+            end
         end
     end
 
@@ -867,22 +1010,18 @@ local function stepPlayer(player: Player, dt: number)
     local hrp = s.HRP
     -- Reuse OverlapParams per player to reduce allocations
     -- Multiplayer-Guard: Include NUR den Track-Ordner dieses Spielers → verhindert Cross-Pickups/Kollisionen
-    local overlap = s.OverlapParams
-    if not overlap then
-        overlap = OverlapParams.new()
-        overlap.FilterType = Enum.RaycastFilterType.Include
-        overlap.RespectCanCollide = false
-        s.OverlapParams = overlap
-    else
-        overlap.FilterType = Enum.RaycastFilterType.Include
+    local overlap: OverlapParams = s.OverlapParams or OverlapParams.new()
+    overlap.FilterType = Enum.RaycastFilterType.Include
+    overlap.RespectCanCollide = false
+    s.OverlapParams = overlap
+    -- Refresh dynamic filter list
+    local filter: { Instance } = s.OverlapFilter or table.create(1)
+    s.OverlapFilter = filter
+    local trackFolder = s.Folder
+    if not trackFolder then
+        return
     end
-    -- Refresh dynamic filter list without allocating a new array
-    local filter = s.OverlapFilter
-    if not filter then
-        filter = table.create(1)
-        s.OverlapFilter = filter
-    end
-    filter[1] = s.Folder :: Instance
+    filter[1] = trackFolder
     overlap.FilterDescendantsInstances = filter
 
     -- Kollisionsbox fix 2 Studs vor dem Spieler in Welt-+Z, unabhängig von seiner Rotation
@@ -900,9 +1039,13 @@ local function stepPlayer(player: Player, dt: number)
                     speed = math.floor(s.Speed),
                     shield = s.ShieldHits,
                     shieldTime = math.max(0, (s.ShieldUntil or 0) - os.clock()),
+                    multiplier = s.Multiplier or 1,
                 })
             else
                 if not s.GameOver then
+                    -- Multiplier/Streak zurücksetzen
+                    s.CoinStreak = 0
+                    s.Multiplier = 1.0
                     s.GameOver = true
                     s.Speed = 0
                     print("[Server] GameOver collision detected for player", player.Name)
@@ -924,9 +1067,12 @@ local function stepPlayer(player: Player, dt: number)
                         speed = math.floor(s.Speed),
                         shield = s.ShieldHits,
                         shieldTime = math.max(0, (s.ShieldUntil or 0) - os.clock()),
+                        multiplier = s.Multiplier or 1,
                     })
                 else
                     if not s.GameOver then
+                        s.CoinStreak = 0
+                        s.Multiplier = 1.0
                         s.GameOver = true
                         s.Speed = 0
                         print("[Server] GameOver (Overhang) for player", player.Name)
@@ -946,13 +1092,27 @@ local function stepPlayer(player: Player, dt: number)
                     local cfg = (Constants.EVENTS and Constants.EVENTS.DoubleCoins) or nil
                     mult = (cfg and (cfg.Multiplier or 2)) or 2
                 end
-                s.Coins += base * mult
+                -- Scoring: Multiplikator anhand CoinStreak
+                local sc = getScoreCfg()
+                s.CoinStreak = (s.CoinStreak or 0) + 1
+                local step = math.max(1, math.floor(sc.StreakStep))
+                local incPer = sc.MultiplierPerStep
+                local maxMul = sc.MaxMultiplier
+                local steps = math.floor((s.CoinStreak or 0) / step)
+                local currMul = 1.0 + steps * incPer
+                if currMul > maxMul then
+                    currMul = maxMul
+                end
+                s.Multiplier = currMul
+                local gained = math.floor(base * mult * currMul)
+                s.Coins += gained
 
                 -- HUD-Feedback (sofort, zusätzlich zur Taktung)
                 local payload: HUDPayload = {
                     distance = math.floor(s.Distance),
                     coins = s.Coins,
                     speed = math.floor(s.Speed),
+                    multiplier = s.Multiplier,
                 }
                 if Constants.DEBUG_LOGS then
                     print(
@@ -1007,7 +1167,20 @@ local function stepPlayer(player: Player, dt: number)
                             local cfg = (Constants.EVENTS and Constants.EVENTS.DoubleCoins) or nil
                             mult = (cfg and (cfg.Multiplier or 2)) or 2
                         end
-                        s.Coins += base * mult
+                        -- Scoring über Magnet-Pickups ebenfalls berücksichtigen
+                        local sc = getScoreCfg()
+                        s.CoinStreak = (s.CoinStreak or 0) + 1
+                        local stepS = math.max(1, math.floor(sc.StreakStep))
+                        local incPer = sc.MultiplierPerStep
+                        local maxMul = sc.MaxMultiplier
+                        local steps = math.floor((s.CoinStreak or 0) / stepS)
+                        local currMul = 1.0 + steps * incPer
+                        if currMul > maxMul then
+                            currMul = maxMul
+                        end
+                        s.Multiplier = currMul
+                        local gained = math.floor(base * mult * currMul)
+                        s.Coins += gained
                         local payload2: HUDPayload = {
                             distance = math.floor(s.Distance),
                             coins = s.Coins,
@@ -1015,11 +1188,33 @@ local function stepPlayer(player: Player, dt: number)
                             magnet = math.max(0, (s.MagnetUntil or 0) - os.clock()),
                             shield = s.ShieldHits or 0,
                             shieldTime = math.max(0, (s.ShieldUntil or 0) - os.clock()),
+                            multiplier = s.Multiplier,
                         }
                         UpdateHUD:FireClient(player, payload2)
                         CoinPickup:FireClient(player)
                         p:Destroy()
                     end
+                end
+            end
+        end
+    end
+
+    -- Bewegliche Hindernisse aktualisieren (kleiner seitlicher Sinus in X)
+    do
+        local movers = s.Movers
+        if movers and #movers > 0 then
+            local t = os.clock()
+            local i = 1
+            while i <= #movers do
+                local m = movers[i]
+                local part = m.part
+                if not part or part.Parent == nil then
+                    table.remove(movers, i)
+                else
+                    local x = m.baseX + math.sin((t + m.phase) * (2 * math.pi) * m.freq) * m.amp
+                    local pos = part.Position
+                    part.CFrame = CFrame.new(Vector3.new(x, pos.Y, pos.Z))
+                    i += 1
                 end
             end
         end
@@ -1037,6 +1232,7 @@ local function stepPlayer(player: Player, dt: number)
             shield = s.ShieldHits or 0,
             shieldTime = math.max(0, (s.ShieldUntil or 0) - os.clock()),
             doubleCoins = math.max(0, (s.DoubleCoinsUntil or 0) - os.clock()),
+            multiplier = s.Multiplier or 1,
         }
         -- Nur gelegentlich loggen, um Spam zu vermeiden
         if Constants.DEBUG_LOGS and (math.floor(os.clock() * 2) % 6) == 0 then
@@ -1145,7 +1341,7 @@ ShopPurchaseRequest.OnServerEvent:Connect(function(player, payload)
         return
     end
     local item = payload and payload.item
-    if item == "Shield1" then
+    if item == "Shield" then
         local cost = 5
         if (s.Coins or 0) >= cost then
             s.Coins -= cost
@@ -1172,6 +1368,30 @@ end)
 -- Track last processed character per player to avoid double init when CharacterAdded fires rapidly
 local lastCharacterProcessed: { [Player]: Model? } = {}
 
+local function isInArena(player: Player): boolean
+    local ok, val = pcall(function()
+        return player:GetAttribute("InArena")
+    end)
+    return ok and (val == true)
+end
+
+local function ensureRunnerIfArena(player: Player)
+    if isInArena(player) then
+        if not state[player] then
+            -- Ensure clean previous (defensive)
+            cleanupPlayer(player)
+            createRunnerFor(player)
+            task.defer(function()
+                applyLoadedData(player)
+            end)
+        end
+    else
+        if state[player] then
+            cleanupPlayer(player)
+        end
+    end
+end
+
 Players.PlayerAdded:Connect(function(player)
     task.spawn(function()
         loadPlayerData(player)
@@ -1183,30 +1403,21 @@ Players.PlayerAdded:Connect(function(player)
             requestSave(player, "Autosave", false)
         end
     end)
+    -- Respond to arena attribute changes
+    player:GetAttributeChangedSignal("InArena"):Connect(function()
+        ensureRunnerIfArena(player)
+    end)
+    -- On character spawns, re-evaluate arena state
     player.CharacterAdded:Connect(function(character)
-        -- Prevent duplicate init for the same character instance
         if lastCharacterProcessed[player] == character then
             return
         end
         lastCharacterProcessed[player] = character
-        -- Clean any previous track/state to avoid orphaned segments on respawn
-        cleanupPlayer(player)
-        createRunnerFor(player)
-        task.defer(function()
-            applyLoadedData(player)
-        end)
+        ensureRunnerIfArena(player)
     end)
-    -- If character already exists (rare race), process it once
+    -- Initial check if character already exists
     if player.Character then
-        local character = player.Character
-        if lastCharacterProcessed[player] ~= character then
-            lastCharacterProcessed[player] = character
-            cleanupPlayer(player)
-            createRunnerFor(player)
-            task.defer(function()
-                applyLoadedData(player)
-            end)
-        end
+        ensureRunnerIfArena(player)
     end
 end)
 

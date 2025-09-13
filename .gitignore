@@ -4,7 +4,6 @@
 .LSOverride
 
 # VS Code
-.vscode/
 .history/
 
 # Logs
@@ -19,12 +18,10 @@ tmp/
 temp/
 
 # Roblox/Studio artifacts
-*.rbxl
 *.rbxlx
 *.rbxm
 *.rbxmx
 build.rbxlx
-sourcemap.json
 
 # Wally/Aftman (Roblox package managers)
 Packages/

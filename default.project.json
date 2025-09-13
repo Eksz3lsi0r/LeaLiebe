@@ -1,41 +1,105 @@
 {
-  "name": "LeaPopelEndlessRunner",
-  "tree": {
-    "$className": "DataModel",
-    "ReplicatedStorage": {
-      "$className": "ReplicatedStorage",
-      "Shared": {
-  "$path": "src/ReplicatedStorage/Shared"
-      },
-      "Remotes": {
-        "$className": "Folder"
-      }
-    },
-    "ServerScriptService": {
-      "$className": "ServerScriptService",
-      "$path": "src/ServerScriptService"
-    },
-    "StarterPlayer": {
-      "$className": "StarterPlayer",
-      "StarterPlayerScripts": {
-        "$className": "StarterPlayerScripts",
-        "$path": "src/StarterPlayer/StarterPlayerScripts"
-      }
-    },
-    "StarterGui": {
-      "$className": "StarterGui",
-      "$path": "src/StarterGui"
-    },
-    "Workspace": {
-      "$className": "Workspace",
-      "Tracks": {
-        "$className": "Folder"
-  }
-    }
-    ,
-    "tests": {
-      "$className": "Folder",
-      "$path": "tests"
-    }
-  }
+	"name": "super-mario-game",
+	"tree": {
+		"$className": "DataModel",
+		"ReplicatedStorage": {
+			"$className": "ReplicatedStorage",
+			"Config": {
+				"$path": "src/ReplicatedStorage/Config.lua"
+			},
+			"Packages": {
+				"$path": "Packages"
+			},
+			"Shared": {
+				"$className": "Folder",
+				"Constants": {
+					"$path": "src/ReplicatedStorage/Shared/Constants.lua"
+				},
+				"ArenaConstants": {
+					"$path": "src/ReplicatedStorage/Shared/ArenaConstants.lua"
+				},
+				"Animations": {
+					"$path": "src/ReplicatedStorage/Shared/Animations.lua"
+				},
+				"SpawnUtils": {
+					"$path": "src/ReplicatedStorage/Shared/SpawnUtils.lua"
+				},
+				"AchievementFix": {
+					"$path": "src/ReplicatedStorage/Shared/AchievementFix.lua"
+				}
+			},
+			"Remotes": {
+				"$className": "Folder",
+				"MoveRequest": {
+					"$className": "RemoteEvent"
+				},
+				"CombatRequest": {
+					"$className": "RemoteEvent"
+				},
+				"CombatSync": {
+					"$className": "RemoteEvent"
+				},
+				"UpdatePlayerHUD": {
+					"$className": "RemoteEvent"
+				},
+				"EnemyDeath": {
+					"$className": "RemoteEvent"
+				},
+				"LootDrop": {
+					"$className": "RemoteEvent"
+				},
+				"ArenaComplete": {
+					"$className": "RemoteEvent"
+				},
+				"MatchmakingQueue": {
+					"$className": "RemoteEvent"
+				},
+				"EquipmentPurchase": {
+					"$className": "RemoteEvent"
+				},
+				"EquipmentResult": {
+					"$className": "RemoteEvent"
+				}
+			}
+		},
+		"ServerScriptService": {
+			"$className": "ServerScriptService",
+			"GameSetup": {
+				"$path": "src/ServerScriptService/GameSetup.server.lua"
+			},
+			"ArenaManager": {
+				"$path": "src/ServerScriptService/ArenaManager.server.lua"
+			},
+			"EnemyAI": {
+				"$path": "src/ServerScriptService/EnemyAI.lua"
+			},
+			"Main": {
+				"$path": "src/ServerScriptService/Main.server.lua"
+			}
+		},
+		"StarterPlayer": {
+			"$className": "StarterPlayer",
+			"StarterPlayerScripts": {
+				"$className": "StarterPlayerScripts",
+				"PlayerController": {
+					"$path": "src/StarterPlayer/StarterPlayerScripts/PlayerController.client.lua"
+				},
+				"AchievementFixLoader": {
+					"$path": "src/StarterPlayer/StarterPlayerScripts/AchievementFixLoader.client.lua"
+				}
+			}
+		},
+		"StarterGui": {
+			"$className": "StarterGui",
+			"LobbyUI": {
+				"$path": "src/StarterGui/LobbyUI.client.lua"
+			},
+			"ArenaHUD": {
+				"$path": "src/StarterGui/ArenaHUD.client.lua"
+			},
+			"HUD": {
+				"$path": "src/StarterGui/HUD.client.lua"
+			}
+		}
+	}
 }

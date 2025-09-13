@@ -1,32 +1,8 @@
-return {
-	name = "LeaPopelEndlessRunner",
-	version = "0.1.0",
-	tree = {
-		ReplicatedStorage = {
-			Shared = {
-				Constants = "src/ReplicatedStorage/Shared/Constants.lua",
-				Animations = "src/ReplicatedStorage/Shared/Animations.lua",
-				SpawnUtils = "src/ReplicatedStorage/Shared/SpawnUtils.lua",
-			},
-			Remotes = true,
-		},
-		ServerScriptService = {
-			Main = "src/ServerScriptService/Main.server.lua",
-			TestBootstrap = "src/ServerScriptService/TestBootstrap.server.lua",
-		},
-		StarterPlayer = {
-			StarterPlayerScripts = {
-				Client = "src/StarterPlayer/StarterPlayerScripts/Client.client.lua",
-			},
-		},
-		StarterGui = {
-			HUD = "src/StarterGui/HUD.client.lua",
-		},
-		Workspace = {
-			Tracks = true,
-			SpawnLocation = true,
-		}
-		,
-		tests = "tests"
-	}
-}
+name = "super-mario-game"
+servePort = 34872
+
+[tree]
+ReplicatedStorage = { Config = "src/ReplicatedStorage/Config.lua", Packages = "Packages" }
+ServerScriptService = { GameSetup = "src/ServerScriptService/GameSetup.server.lua" }
+StarterPlayer = { StarterPlayerScripts = { PlayerController = "src/StarterPlayer/StarterPlayerScripts/PlayerController.client.lua" } }
+tests = "test"

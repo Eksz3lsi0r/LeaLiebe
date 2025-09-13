@@ -7,38 +7,37 @@ local player = Players.LocalPlayer
 -- HUD-Client hält eine Singleton-Instanz am Leben (Attribut EndlessHUD) und zerstört Duplikate bei Respawn
 local playerGui = player:WaitForChild("PlayerGui")
 local Remotes = ReplicatedStorage:WaitForChild("Remotes")
-local RestartRequest = Remotes:WaitForChild("RestartRequest") :: RemoteEvent
+-- RestartRequest is not used in this file currently:
+-- local RestartRequest = Remotes:WaitForChild("RestartRequest") :: RemoteEvent
 local ShopPurchaseRequest = Remotes:FindFirstChild("ShopPurchaseRequest") :: RemoteEvent?
 local ShopResult = Remotes:FindFirstChild("ShopResult") :: RemoteEvent?
 local EventAnnounce = Remotes:FindFirstChild("EventAnnounce") :: RemoteEvent?
 
 -- Try to adopt an existing HUD (e.g., after respawn) to avoid duplicates
-local gui: ScreenGui? = nil
-do
+local function findOrCreateHUD(): ScreenGui
     local existing = playerGui:FindFirstChild("HUD")
     if existing and existing:IsA("ScreenGui") then
-        gui = existing
-    else
-        for _, child in ipairs(playerGui:GetChildren()) do
-            if child:IsA("ScreenGui") and child:GetAttribute("EndlessHUD") then
-                gui = child
-                break
-            end
+        return existing
+    end
+
+    for _, child in ipairs(playerGui:GetChildren()) do
+        if child:IsA("ScreenGui") and child:GetAttribute("EndlessHUD") then
+            return child
         end
     end
+
+    -- Not found, create a new one
+    local newGui = Instance.new("ScreenGui")
+    newGui.Name = "HUD"
+    newGui.ResetOnSpawn = false
+    newGui.Parent = playerGui
+    print("[HUD] ScreenGui created and parented to PlayerGui")
+    return newGui
 end
 
-if gui then
-    gui.Name = "HUD"
-    gui:SetAttribute("EndlessHUD", true)
-else
-    gui = Instance.new("ScreenGui")
-    gui.Name = "HUD"
-    gui.ResetOnSpawn = false
-    gui:SetAttribute("EndlessHUD", true)
-    gui.Parent = playerGui
-    print("[HUD] ScreenGui created and parented to PlayerGui")
-end
+local gui: ScreenGui = findOrCreateHUD()
+gui.Name = "HUD"
+gui:SetAttribute("EndlessHUD", true)
 
 -- Theme & autoscale helpers
 local Theme = {
@@ -79,23 +78,28 @@ local function viewportScale(): number
 end
 
 local function ensureUICorner(inst: Instance, radius: number)
-    local corner = (inst :: Instance):FindFirstChildOfClass("UICorner")
+    local corner = inst:FindFirstChildOfClass("UICorner") :: UICorner?
     if not corner then
-        corner = Instance.new("UICorner")
-        corner.Parent = inst
+        local newCorner = Instance.new("UICorner")
+        newCorner.Parent = inst
+        corner = newCorner
     end
-    corner.CornerRadius = UDim.new(0, radius)
+    -- At this point corner is guaranteed to not be nil
+    (corner :: UICorner).CornerRadius = UDim.new(0, radius)
 end
 
 local function ensureUIStroke(inst: Instance, thickness: number, color: Color3)
-    local stroke = (inst :: Instance):FindFirstChildOfClass("UIStroke")
+    local stroke = inst:FindFirstChildOfClass("UIStroke") :: UIStroke?
     if not stroke then
-        stroke = Instance.new("UIStroke")
-        stroke.Parent = inst
+        local newStroke = Instance.new("UIStroke")
+        newStroke.Parent = inst
+        stroke = newStroke
     end
-    stroke.Thickness = thickness
-    stroke.Color = color
-    stroke.Transparency = 0.25
+    -- At this point stroke is guaranteed to not be nil
+    local strokeObj = stroke :: UIStroke
+    strokeObj.Thickness = thickness
+    strokeObj.Color = color
+    strokeObj.Transparency = 0.25
 end
 
 local function styleLabel(lbl: TextLabel, size: Vector2, pos: Vector2, sf: number)
@@ -157,38 +161,51 @@ local distanceLbl = (gui :: ScreenGui):FindFirstChild("Distance") :: TextLabel?
 if not distanceLbl then
     distanceLbl = makeLabel("Distance", UDim2.fromOffset(20, 20))
 end
-distanceLbl.Text = "0m"
-
+if distanceLbl then
+    distanceLbl.Text = "0m"
+end
 local coinsLbl = (gui :: ScreenGui):FindFirstChild("Coins") :: TextLabel?
 if not coinsLbl then
     coinsLbl = makeLabel("Coins", UDim2.fromOffset(20, 70))
 end
-coinsLbl.Text = "0"
-
+if coinsLbl then
+    coinsLbl.Text = "0"
+end
 local speedLbl = (gui :: ScreenGui):FindFirstChild("Speed") :: TextLabel?
 if not speedLbl then
     speedLbl = makeLabel("Speed", UDim2.fromOffset(20, 120))
 end
-speedLbl.Text = "0"
-
--- optionale Powerup-Anzeigen
+if speedLbl then
+    speedLbl.Text = "0"
+end
 local magnetLbl = (gui :: ScreenGui):FindFirstChild("Magnet") :: TextLabel?
 if not magnetLbl then
     magnetLbl = makeLabel("Magnet", UDim2.fromOffset(20, 170))
 end
-magnetLbl.Text = ""
-
+if magnetLbl then
+    magnetLbl.Text = ""
+end
 local shieldLbl = (gui :: ScreenGui):FindFirstChild("Shield") :: TextLabel?
 if not shieldLbl then
     shieldLbl = makeLabel("Shield", UDim2.fromOffset(20, 220))
 end
-shieldLbl.Text = ""
-
+if shieldLbl then
+    shieldLbl.Text = ""
+end
 local eventLbl = (gui :: ScreenGui):FindFirstChild("Event") :: TextLabel?
 if not eventLbl then
     eventLbl = makeLabel("Event", UDim2.fromOffset(20, 270))
 end
-eventLbl.Text = ""
+if eventLbl then
+    eventLbl.Text = ""
+end
+local multLbl = (gui :: ScreenGui):FindFirstChild("Multiplier") :: TextLabel?
+if not multLbl then
+    multLbl = makeLabel("Multiplier", UDim2.fromOffset(20, 320))
+end
+if multLbl then
+    multLbl.Text = "x✦"
+end
 
 print("[HUD] Labels initialized: Distance/Coins/Speed")
 
@@ -201,12 +218,16 @@ local function restyle()
     styleLabel(magnetLbl :: TextLabel, Vector2.new(170, 40), Vector2.new(20, 170), sf)
     styleLabel(shieldLbl :: TextLabel, Vector2.new(170, 40), Vector2.new(20, 220), sf)
     styleLabel(eventLbl :: TextLabel, Vector2.new(220, 40), Vector2.new(20, 270), sf)
+    styleLabel(multLbl :: TextLabel, Vector2.new(120, 36), Vector2.new(20, 320), sf)
 end
 restyle()
 
 -- Simple top-right button bar (Menu, Shop)
-local topBar = (gui :: ScreenGui):FindFirstChild("TopBar") :: Frame?
-if not topBar then
+local topBar: Frame
+local existingTopBar = (gui :: ScreenGui):FindFirstChild("TopBar") :: Frame?
+if existingTopBar then
+    topBar = existingTopBar
+else
     topBar = Instance.new("Frame")
     topBar.Name = "TopBar"
     topBar.BackgroundTransparency = 1
@@ -227,23 +248,34 @@ local function makeButton(name: string, text: string, xOffset: number): TextButt
     btn.AutoButtonColor = true
     btn.Size = UDim2.fromOffset(110, 36)
     btn.Position = UDim2.fromOffset(xOffset, 4)
-    btn.Parent = topBar :: Frame
+    if topBar then
+        btn.Parent = topBar
+    end
     return btn
 end
 
-local menuBtn = (topBar :: Frame):FindFirstChild("MenuButton") :: TextButton?
-if not menuBtn then
-    menuBtn = makeButton("MenuButton", "Menü", 120)
+local menuBtn: TextButton? = nil
+if topBar then
+    menuBtn = topBar:FindFirstChild("MenuButton") :: TextButton?
+    if not menuBtn then
+        menuBtn = makeButton("MenuButton", "Menü", 120)
+    end
 end
 
-local shopBtn = (topBar :: Frame):FindFirstChild("ShopButton") :: TextButton?
-if not shopBtn then
-    shopBtn = makeButton("ShopButton", "Shop", 4)
+local shopBtn: TextButton? = nil
+if topBar then
+    shopBtn = topBar:FindFirstChild("ShopButton") :: TextButton?
+    if not shopBtn then
+        shopBtn = makeButton("ShopButton", "Shop", 4)
+    end
 end
 
 -- Menu panel
-local menuPanel = (gui :: ScreenGui):FindFirstChild("MenuPanel") :: Frame?
-if not menuPanel then
+local menuPanel: Frame
+local existingMenuPanel = (gui :: ScreenGui):FindFirstChild("MenuPanel") :: Frame?
+if existingMenuPanel then
+    menuPanel = existingMenuPanel
+else
     menuPanel = Instance.new("Frame")
     menuPanel.Name = "MenuPanel"
     menuPanel.BackgroundTransparency = 0.15
@@ -276,11 +308,6 @@ if not menuPanel then
     restartBtn.Size = UDim2.fromOffset(300, 44)
     restartBtn.Position = UDim2.fromOffset(10, 70)
     restartBtn.Parent = menuPanel
-
-    restartBtn.MouseButton1Click:Connect(function()
-        RestartRequest:FireServer()
-        menuPanel.Visible = false
-    end)
 
     local closeBtn = Instance.new("TextButton")
     closeBtn.Name = "Close"
@@ -316,25 +343,33 @@ if not menuPanel then
     end)
 end
 
-menuBtn.MouseButton1Click:Connect(function()
-    local makeVisible = not menuPanel.Visible
-    menuPanel.Visible = makeVisible
-    if makeVisible then
-        -- Schließe Shop und Accessibility, falls offen
-        local sp = (gui :: ScreenGui):FindFirstChild("ShopPanel")
-        if sp and sp:IsA("Frame") then
-            sp.Visible = false
+if menuBtn then
+    menuBtn.MouseButton1Click:Connect(function()
+        if not gui or not menuPanel then
+            return
         end
-        local acc = (gui :: ScreenGui):FindFirstChild("AccessibilityPanel")
-        if acc and acc:IsA("Frame") then
-            acc.Visible = false
+        local makeVisible = not menuPanel.Visible
+        menuPanel.Visible = makeVisible
+        if makeVisible then
+            -- Schließe Shop und Accessibility, falls offen
+            local sp = gui:FindFirstChild("ShopPanel")
+            if sp and sp:IsA("Frame") then
+                sp.Visible = false
+            end
+            local acc = gui:FindFirstChild("AccessibilityPanel")
+            if acc and acc:IsA("Frame") then
+                acc.Visible = false
+            end
         end
-    end
-end)
+    end)
+end
 
 -- Shop panel
-local shopPanel = (gui :: ScreenGui):FindFirstChild("ShopPanel") :: Frame?
-if not shopPanel then
+local shopPanel: Frame
+local existingShopPanel = (gui :: ScreenGui):FindFirstChild("ShopPanel") :: Frame?
+if existingShopPanel then
+    shopPanel = existingShopPanel
+else
     shopPanel = Instance.new("Frame")
     shopPanel.Name = "ShopPanel"
     shopPanel.BackgroundTransparency = 0.15
@@ -357,32 +392,32 @@ if not shopPanel then
     title.Position = UDim2.fromOffset(10, 10)
     title.Parent = shopPanel
 
-    local item1 = Instance.new("TextLabel")
-    item1.Name = "ItemShield"
-    item1.BackgroundTransparency = 0.25
-    item1.BackgroundColor3 = Theme.Bg2
-    item1.Text = "+1 Schild (5 Coins)"
-    item1.Font = Enum.Font.Gotham
-    item1.TextScaled = true
-    item1.TextColor3 = Color3.fromRGB(220, 255, 220)
-    item1.Size = UDim2.fromOffset(210, 44)
-    item1.Position = UDim2.fromOffset(10, 70)
-    item1.Parent = shopPanel
+    local itemShield = Instance.new("TextLabel")
+    itemShield.Name = "ItemShield"
+    itemShield.BackgroundTransparency = 0.25
+    itemShield.BackgroundColor3 = Theme.Bg2
+    itemShield.Text = "⛨ Schild (Coins)"
+    itemShield.Font = Enum.Font.Gotham
+    itemShield.TextScaled = true
+    itemShield.TextColor3 = Color3.fromRGB(220, 255, 220)
+    itemShield.Size = UDim2.fromOffset(210, 44)
+    itemShield.Position = UDim2.fromOffset(10, 70)
+    itemShield.Parent = shopPanel
 
-    local buy1 = Instance.new("TextButton")
-    buy1.Name = "BuyShield"
-    buy1.Text = "Kaufen"
-    buy1.Font = Enum.Font.GothamBold
-    buy1.TextScaled = true
-    buy1.TextColor3 = Color3.new(1, 1, 1)
-    buy1.BackgroundColor3 = Theme.Acc2
-    buy1.Size = UDim2.fromOffset(100, 44)
-    buy1.Position = UDim2.fromOffset(230, 70)
-    buy1.Parent = shopPanel
+    local buyShield = Instance.new("TextButton")
+    buyShield.Name = "BuyShield"
+    buyShield.Text = "Kaufen"
+    buyShield.Font = Enum.Font.GothamBold
+    buyShield.TextScaled = true
+    buyShield.TextColor3 = Color3.new(1, 1, 1)
+    buyShield.BackgroundColor3 = Theme.Acc2
+    buyShield.Size = UDim2.fromOffset(100, 44)
+    buyShield.Position = UDim2.fromOffset(230, 70)
+    buyShield.Parent = shopPanel
 
-    buy1.MouseButton1Click:Connect(function()
+    buyShield.MouseButton1Click:Connect(function()
         if ShopPurchaseRequest then
-            ShopPurchaseRequest:FireServer({ item = "Shield1" })
+            ShopPurchaseRequest:FireServer({ item = "Shield" })
         end
     end)
 
@@ -401,24 +436,32 @@ if not shopPanel then
     end)
 end
 
-shopBtn.MouseButton1Click:Connect(function()
-    local makeVisible = not shopPanel.Visible
-    shopPanel.Visible = makeVisible
-    if makeVisible then
-        -- Schließe Menü und Accessibility, falls offen
-        if menuPanel then
-            menuPanel.Visible = false
+if shopBtn then
+    shopBtn.MouseButton1Click:Connect(function()
+        if not gui then
+            return
         end
-        local acc = (gui :: ScreenGui):FindFirstChild("AccessibilityPanel")
-        if acc and acc:IsA("Frame") then
-            acc.Visible = false
+        local makeVisible = not shopPanel.Visible
+        shopPanel.Visible = makeVisible
+        if makeVisible then
+            -- Schließe Menü und Accessibility, falls offen
+            if menuPanel then
+                menuPanel.Visible = false
+            end
+            local acc = gui:FindFirstChild("AccessibilityPanel")
+            if acc and acc:IsA("Frame") then
+                acc.Visible = false
+            end
         end
-    end
-end)
+    end)
+end
 
 -- Lightweight toast for shop results
-local toast = (gui :: ScreenGui):FindFirstChild("Toast") :: TextLabel?
-if not toast then
+local toast: TextLabel
+local existingToast = (gui :: ScreenGui):FindFirstChild("Toast") :: TextLabel?
+if existingToast then
+    toast = existingToast
+else
     toast = Instance.new("TextLabel")
     toast.Name = "Toast"
     toast.BackgroundTransparency = 0.2
@@ -458,8 +501,11 @@ end
 restylePanels()
 
 -- Accessibility Panel (hidden by default)
-local accPanel = (gui :: ScreenGui):FindFirstChild("AccessibilityPanel") :: Frame?
-if not accPanel then
+local accPanel: Frame
+local existingAccPanel = (gui :: ScreenGui):FindFirstChild("AccessibilityPanel")
+if existingAccPanel and existingAccPanel:IsA("Frame") then
+    accPanel = existingAccPanel
+else
     accPanel = Instance.new("Frame")
     accPanel.Name = "AccessibilityPanel"
     accPanel.BackgroundTransparency = 0.15
@@ -597,8 +643,11 @@ if EventAnnounce then
             return
         end
         if info.kind == "DoubleCoins" then
-            local eventToast = (gui :: ScreenGui):FindFirstChild("EventToast") :: TextLabel?
-            if not eventToast then
+            local eventToast: TextLabel
+            local existingEventToast = (gui :: ScreenGui):FindFirstChild("EventToast") :: TextLabel?
+            if existingEventToast then
+                eventToast = existingEventToast
+            else
                 eventToast = Instance.new("TextLabel")
                 eventToast.Name = "EventToast"
                 eventToast.BackgroundTransparency = 0.2

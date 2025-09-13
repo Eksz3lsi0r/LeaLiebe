@@ -1,12 +1,12 @@
 --!strict
 -- Client input + minor visual FX + HUD hooking
 
+local ContextActionService = game:GetService("ContextActionService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
 local SoundService = game:GetService("SoundService")
 local UserInputService = game:GetService("UserInputService")
-local ContextActionService = game:GetService("ContextActionService")
-local RunService = game:GetService("RunService")
 
 local player = Players.LocalPlayer
 local Remotes = ReplicatedStorage:WaitForChild("Remotes")
@@ -78,7 +78,7 @@ do
         end
         return string.format("rbxassetid://%d", idNumber)
     end
-    local function ensureMusic()
+    local function ensureMusic(): Sound?
         if musicSound and musicSound.Parent then
             return musicSound
         end
@@ -200,9 +200,10 @@ local function ensureVFX()
         -- Erzeuge einen dezenten blauen Partikelring für Magnet
         local att = hrp:FindFirstChild("VFX_Magnet") :: Attachment?
         if not att then
-            att = Instance.new("Attachment")
-            att.Name = "VFX_Magnet"
-            att.Parent = hrp
+            local newAtt = Instance.new("Attachment")
+            newAtt.Name = "VFX_Magnet"
+            newAtt.Parent = hrp
+            att = newAtt
         end
         local pe = Instance.new("ParticleEmitter")
         pe.Name = "MagnetPE"
@@ -384,7 +385,7 @@ local shakeFreq = 12.0 -- Hz
 local shakeDecay = 4.5 -- per second exponential
 local shakeSeed = math.random() * 1000
 
-local function triggerShake(amp: number, duration: number?)
+local function triggerShake(amp: number)
     -- respect PlayerGui ScreenShake attribute
     local pgOk, pg = pcall(function()
         return player:WaitForChild("PlayerGui")
@@ -468,11 +469,11 @@ task.spawn(setupCamera)
 
 -- Expose simple shake triggers for key events (optional use)
 local function shakeCrash()
-    triggerShake(0.7, 0.25)
+    triggerShake(0.7)
 end
 -- selene: allow(unused_variable)
-local function shakeHardLand()
-    triggerShake(0.25, 0.15)
+local function _shakeHardLand()
+    triggerShake(0.25)
 end
 
 -- Simple swipe gestures for mobile
@@ -483,7 +484,7 @@ do
         if gpe then
             return
         end
-        touchStart = input.Position
+        touchStart = Vector2.new(input.Position.X, input.Position.Y)
         touchTime = os.clock()
     end)
     UserInputService.TouchEnded:Connect(function(input, gpe)
@@ -493,7 +494,7 @@ do
         if not touchStart then
             return
         end
-        local delta = input.Position - touchStart
+        local delta = Vector2.new(input.Position.X, input.Position.Y) - touchStart
         local dt = os.clock() - touchTime
         touchStart = nil
         -- einfacher Schwellenwert
@@ -524,17 +525,17 @@ local function setupAnimator()
     local hum = char:WaitForChild("Humanoid") :: Humanoid
     -- Disable Roblox default movement controls (WASD) so W/S don't affect speed
     task.spawn(function()
-        local ps = player:WaitForChild("PlayerScripts")
-        local ok, PlayerModule = pcall(function()
-            return require(ps:WaitForChild("PlayerModule"))
-        end)
-        if ok and PlayerModule then
-            local controlsOk, controls = pcall(function()
-                return PlayerModule:GetControls()
-            end)
-            if controlsOk and controls and controls.Disable then
-                controls:Disable()
+        local success = pcall(function()
+            -- Disable default StarterPlayerScripts controls by setting PlatformStand
+            local humanoid = char:FindFirstChildOfClass("Humanoid")
+            if humanoid then
+                humanoid.PlatformStand = true
+                task.wait(0.1)
+                humanoid.PlatformStand = false
             end
+        end)
+        if not success then
+            warn("[Client] Could not disable default movement controls")
         end
     end)
     -- Disable default Animate to avoid conflicts
@@ -542,10 +543,31 @@ local function setupAnimator()
     if animateScript and animateScript:IsA("LocalScript") then
         animateScript.Disabled = true
     end
+    -- Safety check: ensure we have valid humanoid before proceeding
+    if not hum then
+        warn("[Client] Failed to setup animator - missing humanoid")
+        return
+    end
+    
     local animator = hum:FindFirstChildOfClass("Animator")
     if not animator then
-        animator = Instance.new("Animator")
-        animator.Parent = hum
+        local success, newAnimator = pcall(function()
+            local anim = Instance.new("Animator")
+            anim.Parent = hum
+            return anim
+        end)
+        if success and newAnimator then
+            animator = newAnimator
+        else
+            warn("[Client] Failed to create animator")
+            return
+        end
+    end
+    
+    -- Final safety check: ensure we have valid animator
+    if not animator then
+        warn("[Client] Failed to setup animator - could not create animator")
+        return
     end
 
     local tracks: { [string]: AnimationTrack } = {}
@@ -841,53 +863,57 @@ local cachedSpeed: TextLabel? = nil
 local cachedMagnet: TextLabel? = nil
 local cachedShield: TextLabel? = nil
 local cachedEvent: TextLabel? = nil
+local cachedMult: TextLabel? = nil
 
--- Ensure only one HUD exists at any time (singleton)
-local function enforceSingleHUD()
+-- Create a minimal HUD if none exists (fallback)
+local function _ensureHUD(): ScreenGui
     local sg = player:WaitForChild("PlayerGui")
-    local function isHUD(inst: Instance): boolean
-        return inst:IsA("ScreenGui") and inst.Name == "HUD"
+    local existing = sg:FindFirstChild("HUD")
+    if existing and existing:IsA("ScreenGui") then
+        cachedHUD = existing
+        return existing
     end
 
-    -- Prefer adopting an existing HUD if ours isn't resolved yet
-    local ours = cachedHUD
-        or (function()
-            local h = sg:FindFirstChild("HUD")
-            if h and h:IsA("ScreenGui") then
-                cachedHUD = h
-                h:SetAttribute("EndlessHUD", true)
-                return h
-            end
-            return nil
-        end)()
+    local hud = Instance.new("ScreenGui")
+    hud.Name = "HUD"
+    hud.ResetOnSpawn = false
+    hud:SetAttribute("EndlessHUD", true)
+    hud.Parent = sg
 
-    -- Remove duplicates immediately
-    if ours then
-        for _, child in ipairs(sg:GetChildren()) do
-            if isHUD(child) and child ~= ours then
-                child:Destroy()
-            end
-        end
+    local function makeLabel(name: string, pos: UDim2): TextLabel
+        local lbl = Instance.new("TextLabel")
+        lbl.Name = name
+        lbl.BackgroundTransparency = 0.35
+        lbl.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+        lbl.BorderSizePixel = 0
+        lbl.TextColor3 = Color3.new(1, 1, 1)
+        lbl.Font = Enum.Font.GothamBold
+        lbl.TextScaled = true
+        lbl.Size = UDim2.fromOffset(160, 40)
+        lbl.Position = pos
+        lbl.Parent = hud
+        return lbl
     end
 
-    -- Future duplicates: destroy anything that isn't our managed HUD
-    sg.ChildAdded:Connect(function(child)
-        if isHUD(child) then
-            local current = cachedHUD or child
-            if current ~= child and child.Parent == sg then
-                task.defer(function()
-                    if child.Parent == sg then
-                        child:Destroy()
-                    end
-                end)
-            else
-                -- If we had none, adopt this one
-                cachedHUD = child
-                child:SetAttribute("EndlessHUD", true)
-            end
-        end
-    end)
+    makeLabel("Distance", UDim2.fromOffset(20, 20)).Text = "0m"
+    makeLabel("Coins", UDim2.fromOffset(20, 70)).Text = "0"
+    makeLabel("Speed", UDim2.fromOffset(20, 120)).Text = "0"
+    makeLabel("Magnet", UDim2.fromOffset(20, 170)).Text = ""
+    makeLabel("Shield", UDim2.fromOffset(20, 220)).Text = ""
+    makeLabel("Event", UDim2.fromOffset(20, 270)).Text = ""
+    makeLabel("Multiplier", UDim2.fromOffset(20, 320)).Text = "x✦"
+
+    cachedHUD = hud
+    cachedDist = hud:FindFirstChild("Distance") :: TextLabel?
+    cachedCoins = hud:FindFirstChild("Coins") :: TextLabel?
+    cachedSpeed = hud:FindFirstChild("Speed") :: TextLabel?
+    cachedMagnet = hud:FindFirstChild("Magnet") :: TextLabel?
+    cachedShield = hud:FindFirstChild("Shield") :: TextLabel?
+    cachedEvent = hud:FindFirstChild("Event") :: TextLabel?
+    cachedMult = hud:FindFirstChild("Multiplier") :: TextLabel?
+    return hud
 end
+
 
 -- Create a minimal HUD if none exists (fallback)
 local function ensureHUD(): ScreenGui
@@ -925,6 +951,7 @@ local function ensureHUD(): ScreenGui
     makeLabel("Magnet", UDim2.fromOffset(20, 170)).Text = ""
     makeLabel("Shield", UDim2.fromOffset(20, 220)).Text = ""
     makeLabel("Event", UDim2.fromOffset(20, 270)).Text = ""
+    makeLabel("Multiplier", UDim2.fromOffset(20, 320)).Text = "x✦"
 
     cachedHUD = hud
     cachedDist = hud:FindFirstChild("Distance") :: TextLabel?
@@ -933,10 +960,30 @@ local function ensureHUD(): ScreenGui
     cachedMagnet = hud:FindFirstChild("Magnet") :: TextLabel?
     cachedShield = hud:FindFirstChild("Shield") :: TextLabel?
     cachedEvent = hud:FindFirstChild("Event") :: TextLabel?
+    cachedMult = hud:FindFirstChild("Multiplier") :: TextLabel?
     return hud
 end
 
 -- Activate singleton enforcement once
+local function enforceSingleHUD()
+    local sg = player:WaitForChild("PlayerGui")
+    local hudCount = 0
+    local lastHUD: ScreenGui? = nil
+    for _, child in ipairs(sg:GetChildren()) do
+        if child:IsA("ScreenGui") and child:GetAttribute("EndlessHUD") then
+            hudCount += 1
+            lastHUD = child
+        end
+    end
+    -- Remove duplicates, keep the last one
+    if hudCount > 1 then
+        for _, child in ipairs(sg:GetChildren()) do
+            if child:IsA("ScreenGui") and child:GetAttribute("EndlessHUD") and child ~= lastHUD then
+                child:Destroy()
+            end
+        end
+    end
+end
 enforceSingleHUD()
 
 local function resolveHUD(): ScreenGui?
@@ -955,8 +1002,9 @@ local function resolveHUD(): ScreenGui?
     end
     if hud and hud:IsA("ScreenGui") then
         cachedHUD = hud
+        return hud
     end
-    return cachedHUD
+    return nil
 end
 
 local function resolveLabels()
@@ -981,6 +1029,9 @@ local function resolveLabels()
     end
     if not (cachedEvent and cachedEvent.Parent == hud) then
         cachedEvent = hud:FindFirstChild("Event") :: TextLabel?
+    end
+    if not (cachedMult and cachedMult.Parent == hud) then
+        cachedMult = hud:FindFirstChild("Multiplier") :: TextLabel?
     end
 end
 
@@ -1029,6 +1080,10 @@ UpdateHUD.OnClientEvent:Connect(function(payload)
     if cachedEvent and cachedEvent:IsA("TextLabel") then
         local secs = math.max(0, (payload.doubleCoins or 0))
         cachedEvent.Text = secs > 0 and string.format("Double Coins: %.0fs", secs) or ""
+    end
+    if cachedMult and cachedMult:IsA("TextLabel") then
+        local m = tonumber(payload.multiplier or 1) or 1
+        cachedMult.Text = string.format("x%.1f", m)
     end
 
     -- VFX-Toggling (clientseitig, basierend auf servergetakteten HUD-States)
@@ -1257,40 +1312,11 @@ end)
 -- Powerup Pickup Feedback (optional placeholder)
 if PowerupPickup then
     PowerupPickup.OnClientEvent:Connect(function(_info)
-        -- SFX für Powerup
+        -- SFX für Powerup using the global playSfx helper
         local powerupIds = (Constants.AUDIO and Constants.AUDIO.PowerupSoundIds) or {}
-        local function playFirst(list: { number }?, name: string, volume: number)
-            if not list or #list == 0 then
-                return
-            end
-            for _, id in ipairs(list) do
-                if typeof(id) == "number" and id > 0 then
-                    local s = Instance.new("Sound")
-                    s.Name = name
-                    s.SoundId = string.format("rbxassetid://%d", id)
-                    s.Volume = volume
-                    s.Parent = SoundService
-                    local ok = pcall(function()
-                        SoundService:PlayLocalSound(s)
-                    end)
-                    if ok then
-                        task.delay(2, function()
-                            if s and s.Parent then
-                                s:Destroy()
-                            end
-                        end)
-                        return
-                    else
-                        if s then
-                            s:Destroy()
-                        end
-                    end
-                end
-            end
-        end
         local vcfg = (Constants.AUDIO and Constants.AUDIO.SFXVolumes) or {}
         local vMaster = (vcfg.Master or 1.0)
-        playFirst(powerupIds, "PowerupSFX", (vcfg.Powerup or 0.6) * vMaster)
+        playSfx(powerupIds, "PowerupSFX", (vcfg.Powerup or 0.6) * vMaster)
         if music_onPowerupRef then
             music_onPowerupRef()
         end
@@ -1304,29 +1330,36 @@ if EventAnnounce then
         if kind == "DoubleCoins" then
             -- Reuse simple SFX helper and screen message via HUD ensure
             local hud = ensureHUD()
+            if not hud then
+                warn("[Client] Could not create HUD for event announcement")
+                return
+            end
             -- lightweight toast using a temporary TextLabel at top center
             local toast = hud:FindFirstChild("EventToast") :: TextLabel?
             if not toast then
-                toast = Instance.new("TextLabel")
-                toast.Name = "EventToast"
-                toast.BackgroundTransparency = 0.2
-                toast.BackgroundColor3 = Color3.fromRGB(35, 80, 35)
-                toast.TextColor3 = Color3.new(1, 1, 1)
-                toast.Font = Enum.Font.GothamBold
-                toast.TextScaled = true
-                toast.Size = UDim2.fromOffset(280, 36)
-                toast.AnchorPoint = Vector2.new(0.5, 0)
-                toast.Position = UDim2.fromScale(0.5, 0.05)
-                toast.Visible = false
-                toast.Parent = hud
+                local newToast = Instance.new("TextLabel")
+                newToast.Name = "EventToast"
+                newToast.BackgroundTransparency = 0.2
+                newToast.BackgroundColor3 = Color3.fromRGB(35, 80, 35)
+                newToast.TextColor3 = Color3.new(1, 1, 1)
+                newToast.Font = Enum.Font.GothamBold
+                newToast.TextScaled = true
+                newToast.Size = UDim2.fromOffset(280, 36)
+                newToast.AnchorPoint = Vector2.new(0.5, 0)
+                newToast.Position = UDim2.fromScale(0.5, 0.05)
+                newToast.Visible = false
+                newToast.Parent = hud
+                toast = newToast
             end
-            toast.Text = "Event: Double Coins!"
-            toast.Visible = true
-            task.delay(2.0, function()
-                if toast and toast.Parent then
-                    toast.Visible = false
-                end
-            end)
+            if toast then
+                toast.Text = "Event: Double Coins!"
+                toast.Visible = true
+                task.delay(2.0, function()
+                    if toast and toast.Parent then
+                        toast.Visible = false
+                    end
+                end)
+            end
         end
     end)
 end

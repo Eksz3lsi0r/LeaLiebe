@@ -1,0 +1,33 @@
+{
+	"luau-lsp.require.mode": "relativeToFile",
+	"luau-lsp.sourcemap.enabled": true,
+	"luau-lsp.sourcemap.autogenerate": false,
+	"luau-lsp.sourcemap.rojoProjectFile": "default.project.json",
+	"luau-lsp.platform.type": "roblox",
+	"luau-lsp.suggest.enabled": true,
+	"luau-lsp.completion.enabled": true,
+	"luau-lsp.completion.fillCallParens": true,
+	"luau-lsp.completion.addParentheses": true,
+	"luau-lsp.hover.enabled": true,
+	"luau-lsp.diagnostics.enabled": true,
+	"luau-lsp.diagnostics.strictDatamodelTypes": true,
+	"files.associations": {
+		"*.lua": "luau",
+		"*.luau": "luau"
+	},
+	"editor.defaultFormatter": "JohnnyMorganz.stylua",
+	"editor.formatOnSave": true,
+	"editor.codeActionsOnSave": {
+		"source.fixAll": "explicit"
+	},
+	"[luau]": {
+		"editor.defaultFormatter": "JohnnyMorganz.stylua",
+		"editor.formatOnSave": true,
+		"editor.insertSpaces": false,
+		"editor.tabSize": 4
+	},
+	"github.copilot.chat.codeGeneration.useCodebaseContext": true,
+	"[markdown]": {
+		"editor.defaultFormatter": "esbenp.prettier-vscode"
+	}
+}
