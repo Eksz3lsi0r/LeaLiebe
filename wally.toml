@@ -1,13 +1,20 @@
 [package]
 name = "Eksz3lsi0r/lea-liebe-arena-rpg"
-version = "0.2.0"
+version = "0.3.0"
 registry = "https://github.com/UpliftGames/wally-index"
 realm = "shared"
+description = "Mini Arena RPG - Server-autoritatives Combat-System für Roblox"
+license = "MIT"
+authors = ["Eksz3lsi0r"]
 
 [dependencies]
-# Framework für optionales Service-Pattern (teilweise genutzt in GameSetup)
-Knit = "sleitnick/knit@1.6.1"
-# Nicht aktiv verwendet, können bei Bedarf entfernt werden:
-# Promise = "evaera/promise@4.0.0"
-# Signal = "sleitnick/signal@1.5.0" 
-# Trove = "sleitnick/trove@1.2.0"
+# Framework für Service-Pattern und Dependency Injection
+Knit = "sleitnick/knit@1.7.3"
+# Für asynchrone Operationen (Combat, Matchmaking)
+Promise = "evaera/promise@4.0.0"
+# Event-System für loose coupling
+Signal = "sleitnick/signal@1.5.0" 
+# Automatische Cleanup für Connections/Instances
+Trove = "sleitnick/trove@1.2.1"
+
+[dev-dependencies]

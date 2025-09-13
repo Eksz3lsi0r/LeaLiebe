@@ -1,0 +1,24 @@
+# Roblox-spezifische Dateierweiterungen
+*.rbxl binary
+*.rbxlx text eol=lf
+*.rbxm binary  
+*.rbxmx text eol=lf
+
+# Lua/Luau Code - immer LF line endings
+*.lua text eol=lf
+*.luau text eol=lf
+
+# JSON/TOML Konfiguration
+*.json text eol=lf
+*.toml text eol=lf
+
+# Markdown und Dokumentation
+*.md text eol=lf
+*.txt text eol=lf
+
+# Shell-Scripts
+*.sh text eol=lf
+
+# Git-Attribute für bessere Diffs
+*.lua diff=lua
+*.luau diff=lua

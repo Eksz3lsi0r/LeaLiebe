@@ -1,5 +1,6 @@
 [tools]
 rojo = "rojo-rbx/rojo@7.4.4"
-luau-lsp = "JohnnyMorganz/luau-lsp@1.36.0"
+luau-lsp = "JohnnyMorganz/luau-lsp@1.36.0" 
 stylua = "JohnnyMorganz/StyLua@2.0.2"
 selene = "Kampfkarren/selene@0.28.0"
+wally = "UpliftGames/wally@0.3.2"

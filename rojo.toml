@@ -8,6 +8,7 @@ ReplicatedStorage = {
     Shared = {
         Constants = "src/ReplicatedStorage/Shared/Constants.lua",
         ArenaConstants = "src/ReplicatedStorage/Shared/ArenaConstants.lua",
+        ClassSystem = "src/ReplicatedStorage/Shared/ClassSystem.lua",
         Animations = "src/ReplicatedStorage/Shared/Animations.lua",
         SpawnUtils = "src/ReplicatedStorage/Shared/SpawnUtils.lua",
         AchievementFix = "src/ReplicatedStorage/Shared/AchievementFix.lua"
@@ -17,7 +18,9 @@ ServerScriptService = {
     GameSetup = "src/ServerScriptService/GameSetup.server.lua",
     ArenaManager = "src/ServerScriptService/ArenaManager.server.lua",
     EnemyAI = "src/ServerScriptService/EnemyAI.lua",
-    Main = "src/ServerScriptService/Main.server.lua"
+    Main = "src/ServerScriptService/Main.server.lua",
+    MatchmakingSystem = "src/ServerScriptService/MatchmakingSystem.server.lua",
+    MatchValidation = "src/ServerScriptService/MatchValidation.server.lua"
 }
 StarterPlayer = { 
     StarterPlayerScripts = { 
@@ -28,6 +31,7 @@ StarterPlayer = {
 StarterGui = {
     LobbyUI = "src/StarterGui/LobbyUI.client.lua",
     ArenaHUD = "src/StarterGui/ArenaHUD.client.lua",
-    HUD = "src/StarterGui/HUD.client.lua"
+    HUD = "src/StarterGui/HUD.client.lua",
+    ClassSelectionUI = "src/StarterGui/ClassSelectionUI.client.lua"
 }
 tests = "test"
