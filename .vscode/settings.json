@@ -26,8 +26,22 @@
 		"editor.insertSpaces": false,
 		"editor.tabSize": 4
 	},
-	"github.copilot.chat.codeGeneration.useCodebaseContext": true,
 	"[markdown]": {
-		"editor.defaultFormatter": "esbenp.prettier-vscode"
-	}
+		"editor.defaultFormatter": "vscode.markdown-language-features"
+	},
+	"luau-lsp.diagnostics.workspace": true,
+	"luau-lsp.completion.enableFragmentAutocomplete": true,
+	"luau-lsp.completion.imports.enabled": true,
+	"luau-lsp.completion.showPropertiesOnMethodCall": true,
+	"luau-lsp.fflags.enableByDefault": true,
+	"luau-lsp.fflags.enableNewSolver": true,
+	"luau-lsp.hover.showTableKinds": true,
+	"luau-lsp.inlayHints.functionReturnTypes": true,
+	"luau-lsp.inlayHints.hideHintsForMatchingParameterNames": false,
+	"luau-lsp.inlayHints.parameterNames": "all",
+	"luau-lsp.inlayHints.parameterTypes": true,
+	"luau-lsp.inlayHints.typeHintMaxLength": 500,
+	"luau-lsp.inlayHints.variableTypes": true,
+	"luau-lsp.plugin.enabled": true,
+	"notebook.defaultFormatter": "ms-toolsai.jupyter"
 }

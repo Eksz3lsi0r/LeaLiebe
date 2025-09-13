@@ -1,8 +1,34 @@
-name = "super-mario-game"
+name = "lea-liebe-arena-rpg"
 servePort = 34872
 
 [tree]
-ReplicatedStorage = { Config = "src/ReplicatedStorage/Config.lua", Packages = "Packages" }
-ServerScriptService = { GameSetup = "src/ServerScriptService/GameSetup.server.lua" }
-StarterPlayer = { StarterPlayerScripts = { PlayerController = "src/StarterPlayer/StarterPlayerScripts/PlayerController.client.lua" } }
+ReplicatedStorage = { 
+    Config = "src/ReplicatedStorage/Config.lua", 
+    Packages = "Packages",
+    Shared = {
+        Constants = "src/ReplicatedStorage/Shared/Constants.lua",
+        ArenaConstants = "src/ReplicatedStorage/Shared/ArenaConstants.lua",
+        Animations = "src/ReplicatedStorage/Shared/Animations.lua",
+        SpawnUtils = "src/ReplicatedStorage/Shared/SpawnUtils.lua",
+        AchievementFix = "src/ReplicatedStorage/Shared/AchievementFix.lua"
+    }
+}
+ServerScriptService = { 
+    GameSetup = "src/ServerScriptService/GameSetup.server.lua",
+    ArenaManager = "src/ServerScriptService/ArenaManager.server.lua",
+    EnemyAI = "src/ServerScriptService/EnemyAI.lua",
+    Main = "src/ServerScriptService/Main.server.lua"
+}
+StarterPlayer = { 
+    StarterPlayerScripts = { 
+        PlayerController = "src/StarterPlayer/StarterPlayerScripts/PlayerController.client.lua",
+        AchievementFixLoader = "src/StarterPlayer/StarterPlayerScripts/AchievementFixLoader.client.lua",
+        Client = "src/StarterPlayer/StarterPlayerScripts/Client.client.lua"
+    } 
+}
+StarterGui = {
+    LobbyUI = "src/StarterGui/LobbyUI.client.lua",
+    ArenaHUD = "src/StarterGui/ArenaHUD.client.lua",
+    HUD = "src/StarterGui/HUD.client.lua"
+}
 tests = "test"

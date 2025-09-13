@@ -632,7 +632,7 @@ if ShopResult then
         end
         local ok = (result.ok == true)
         local msg = ok and "Gekauft!" or (result.reason or "Fehlgeschlagen")
-        showToast(msg)
+        showToast(tostring(msg))
     end)
 end
 

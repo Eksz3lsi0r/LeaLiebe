@@ -1,11 +1,13 @@
 [package]
-name = "Eksz3lsi0r/lea-liebe"
-version = "0.1.0"
+name = "Eksz3lsi0r/lea-liebe-arena-rpg"
+version = "0.2.0"
 registry = "https://github.com/UpliftGames/wally-index"
 realm = "shared"
 
 [dependencies]
+# Framework für optionales Service-Pattern (teilweise genutzt in GameSetup)
 Knit = "sleitnick/knit@1.6.1"
-Promise = "evaera/promise@4.0.0"
-Signal = "sleitnick/signal@1.5.0"
-Trove = "sleitnick/trove@1.2.0"
+# Nicht aktiv verwendet, können bei Bedarf entfernt werden:
+# Promise = "evaera/promise@4.0.0"
+# Signal = "sleitnick/signal@1.5.0" 
+# Trove = "sleitnick/trove@1.2.0"

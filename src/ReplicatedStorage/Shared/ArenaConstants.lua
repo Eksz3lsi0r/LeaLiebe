@@ -186,18 +186,49 @@ ArenaConstants.HUD = {
     StaminaBarColor = Color3.fromRGB(255, 200, 50),
 }
 
--- Audio
+-- Audio-IDs für Arena (Roblox Asset IDs)
 ArenaConstants.AUDIO = {
-    AttackSoundIds = { 100936483086925 }, -- Placeholder
-    BlockSoundIds = { 104298925753512 }, -- Placeholder
-    SpellSoundIds = { 100936483086925 }, -- Placeholder
-    DeathSoundIds = { 104298925753512 }, -- Placeholder
-    LevelUpSoundIds = { 100936483086925 }, -- Placeholder
-    LootDropSoundIds = { 104298925753512 }, -- Placeholder
+    -- Combat Audio (reusing existing assets as placeholders)
+    AttackSoundIds = {
+        100936483086925, -- Reuse jump sound as attack placeholder
+    },
+    CastSoundIds = {
+        8208591201, -- Reuse powerup sound as cast placeholder
+    },
+    HitSoundIds = {
+        8595980577, -- Reuse error sound as hit placeholder
+    },
+    DeathSoundIds = {
+        8595980577, -- Reuse error sound as death placeholder
+    },
+    VictorySoundIds = {
+        8208591201, -- Reuse powerup sound as victory placeholder
+    },
+    -- Volume settings for arena combat
+    SFXVolumes = {
+        Attack = 0.6,
+        Cast = 0.5,
+        Hit = 0.7,
+        Death = 0.8,
+        Victory = 0.7,
+    },
+}
 
-    -- Lautstärke
-    SFXVolume = 0.3,
-    MusicVolume = 0.2,
+-- Animation-IDs für Arena (R15)
+ArenaConstants.ANIMATIONS = {
+    -- Basic animations (using R15 default animations as placeholders)
+    Idle = 507766388, -- R15 Idle
+    Walk = 507777826, -- R15 Walk
+    Run = 507777826, -- R15 Run (same as walk)
+    Jump = 507765000, -- R15 Jump
+    -- Combat animations (using available R15 animations as placeholders)
+    Attack = 507765644, -- R15 Attack animation
+    Attack1 = 507765644, -- R15 Attack (variation 1)
+    Attack2 = 507765644, -- R15 Attack (variation 2, duplicate for now)
+    Block = 507770677, -- R15 Shield animation
+    Cast = 507770239, -- R15 Cast animation
+    Hit = 507767968, -- R15 Fall (reused for hit reaction)
+    Death = 507767968, -- R15 Fall (reused for death)
 }
 
 -- Debug & Development

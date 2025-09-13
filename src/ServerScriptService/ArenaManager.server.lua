@@ -448,7 +448,7 @@ CombatRequest.OnServerEvent:Connect(function(player: Player, action: string, tar
         playerState.IsBlocking = true
         CombatSync:FireClient(player, { action = "Block", success = true })
     elseif action == "Cast" and spellId then
-        local spell = ArenaConstants.MAGIC[spellId]
+        local spell = (ArenaConstants.MAGIC :: any)[spellId]
         if spell and playerState.Mana >= spell.ManaCost then
             playerState.Mana = math.max(0, playerState.Mana - spell.ManaCost)
 

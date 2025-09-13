@@ -184,7 +184,7 @@ local MIN_SAVE_INTERVAL = 20.0 -- seconds between non-urgent saves per user
 local function getSaveMeta(uid: number): SaveMeta
     local meta = saveMeta[uid]
     if not meta then
-        meta = { lastSave = 0, inFlight = false, pending = false, scheduleToken = nil }
+        meta = { lastSave = 0, inFlight = false, pending = false, scheduleToken = nil } :: SaveMeta
         saveMeta[uid] = meta
     end
     return meta
@@ -248,11 +248,11 @@ local function savePlayerData(player: Player, reason: string?)
         return
     end
     local key = string.format("u_%d", uid)
-    local ok, err = pcall(function()
+    local ok = pcall(function()
         ds:SetAsync(key, { coins = cached.coins, best = cached.best })
     end)
     if not ok then
-        warn("[Server] Save failed for", player.Name, reason or "", err)
+        warn("[Server] Save failed for", player.Name, reason or "")
     end
 end
 
@@ -341,13 +341,13 @@ end
 local function getAnimator(hum: Humanoid): Animator?
     local animator = hum:FindFirstChildOfClass("Animator")
     if not animator then
-        local ok, err = pcall(function()
+        local ok = pcall(function()
             local a = Instance.new("Animator")
             a.Parent = hum
             animator = a
         end)
         if not ok or not animator then
-            warn("[Server] Failed to create Animator:", err)
+            warn("[Server] Failed to create Animator")
             return nil
         end
     end
@@ -691,7 +691,7 @@ spawnSegment = function(player: Player, segmentIndex: number, baseZ: number)
         ground.Size = Vector3.new(6, 1, Constants.SPAWN.SegmentLength)
         ground.Anchored = true
         ground.Material = Enum.Material.SmoothPlastic
-        if biome and biome.groundColor then
+        if biome and typeof(biome) == "table" and biome.groundColor then
             ground.Color = toColor3(biome.groundColor)
         else
             ground.Color = Color3.fromRGB(59, 59, 59)
@@ -708,10 +708,10 @@ spawnSegment = function(player: Player, segmentIndex: number, baseZ: number)
             return nil
         end
         local entries = {
-            { name = "CoinLine", p = patterns.CoinLine or 0 },
-            { name = "CoinZigZag", p = patterns.CoinZigZag or 0 },
-            { name = "LaneBlocker", p = patterns.LaneBlocker or 0 },
-            { name = "Mover", p = patterns.Mover or 0 },
+            { name = "CoinLine", p = tonumber(patterns.CoinLine) or 0 },
+            { name = "CoinZigZag", p = tonumber(patterns.CoinZigZag) or 0 },
+            { name = "LaneBlocker", p = tonumber(patterns.LaneBlocker) or 0 },
+            { name = "Mover", p = tonumber(patterns.Mover) or 0 },
         }
         local sum = 0
         for _, e in ipairs(entries) do
@@ -833,8 +833,8 @@ spawnSegment = function(player: Player, segmentIndex: number, baseZ: number)
                 local pick = math.random()
                 local kind = SpawnUtils.pickPowerupKind(
                     pick,
-                    (Constants.POWERUPS.Magnet.Weight or 1),
-                    (Constants.POWERUPS.Shield.Weight or 1)
+                    (tonumber(Constants.POWERUPS.Magnet.Weight) or 1),
+                    (tonumber(Constants.POWERUPS.Shield.Weight) or 1)
                 )
                 local pu = createPowerup(kind)
                 pu.Position = Vector3.new(laneX, 4, z)
@@ -999,7 +999,7 @@ local function stepPlayer(player: Player, dt: number)
         -- Aufräumen
         local toKeepFrom = s.NextSegment - Constants.SPAWN.CleanupBehind
         for _, child in ipairs((s.Folder :: Folder):GetChildren()) do
-            local idx = tonumber(string.match(child.Name, "Seg_(%d+)") or "0")
+            local idx = tonumber(string.match(child.Name, "Seg_(%d+)") or "0") or 0
             if idx > 0 and idx < toKeepFrom then
                 child:Destroy()
             end
@@ -1015,7 +1015,7 @@ local function stepPlayer(player: Player, dt: number)
     overlap.RespectCanCollide = false
     s.OverlapParams = overlap
     -- Refresh dynamic filter list
-    local filter: { Instance } = s.OverlapFilter or table.create(1)
+    local filter: { Instance } = s.OverlapFilter or ({} :: { Instance })
     s.OverlapFilter = filter
     local trackFolder = s.Folder
     if not trackFolder then
@@ -1150,7 +1150,7 @@ local function stepPlayer(player: Player, dt: number)
 
     -- Magnet: Coins anziehen
     if (s.MagnetUntil or 0) > os.clock() then
-        local radius = (Constants.POWERUPS.Magnet.Radius or 16)
+        local radius = tonumber(Constants.POWERUPS.Magnet.Radius) or 16
         local near = workspace:GetPartBoundsInRadius(hrp.Position, radius, overlap)
         for _, p in ipairs(near) do
             if p.Name == "Coin" and p.Parent and not p:GetAttribute("Collected") then
@@ -1222,7 +1222,7 @@ local function stepPlayer(player: Player, dt: number)
 
     -- HUD-Update (deterministisch getaktet)
     s._HudAccum = (s._HudAccum or 0) + dt
-    if s._HudAccum >= 0.15 then -- HUD-Throttle: ~6-7 Hz
+    if (s._HudAccum or 0) >= 0.15 then -- HUD-Throttle: ~6-7 Hz
         s._HudAccum = 0
         local payload: HUDPayload = {
             distance = math.floor(s.Distance),

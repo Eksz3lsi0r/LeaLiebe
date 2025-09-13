@@ -327,14 +327,14 @@ end)
 
 -- Combat Feedback Handler
 CombatSync.OnClientEvent:Connect(function(combatData)
-    if combatData.action == "Attack" and combatData.damage then
+    if combatData.action == "Attack" and combatData.damage and type(combatData.damage) == "number" then
         -- Zeige Schadenszahl an
         local character = player.Character
         if character then
             local hrp = character:FindFirstChild("HumanoidRootPart") :: BasePart?
             if hrp then
                 createDamageNumber(
-                    combatData.damage,
+                    combatData.damage :: number,
                     hrp.Position + Vector3.new(0, 3, 0),
                     Color3.fromRGB(255, 100, 100)
                 )

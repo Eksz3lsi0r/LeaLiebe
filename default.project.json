@@ -1,5 +1,5 @@
 {
-	"name": "super-mario-game",
+	"name": "lea-liebe-arena-rpg",
 	"tree": {
 		"$className": "DataModel",
 		"ReplicatedStorage": {
@@ -17,6 +17,9 @@
 				},
 				"ArenaConstants": {
 					"$path": "src/ReplicatedStorage/Shared/ArenaConstants.lua"
+				},
+				"ClassSystem": {
+					"$path": "src/ReplicatedStorage/Shared/ClassSystem.lua"
 				},
 				"Animations": {
 					"$path": "src/ReplicatedStorage/Shared/Animations.lua"
@@ -59,6 +62,21 @@
 				},
 				"EquipmentResult": {
 					"$className": "RemoteEvent"
+				},
+				"EnterQueue": {
+					"$className": "RemoteEvent"
+				},
+				"LeaveQueue": {
+					"$className": "RemoteEvent"
+				},
+				"MatchFound": {
+					"$className": "RemoteEvent"
+				},
+				"QueueStatus": {
+					"$className": "RemoteEvent"
+				},
+				"MatchResult": {
+					"$className": "RemoteEvent"
 				}
 			}
 		},
@@ -75,6 +93,12 @@
 			},
 			"Main": {
 				"$path": "src/ServerScriptService/Main.server.lua"
+			},
+			"MatchmakingSystem": {
+				"$path": "src/ServerScriptService/MatchmakingSystem.server.lua"
+			},
+			"MatchValidation": {
+				"$path": "src/ServerScriptService/MatchValidation.server.lua"
 			}
 		},
 		"StarterPlayer": {
@@ -86,6 +110,9 @@
 				},
 				"AchievementFixLoader": {
 					"$path": "src/StarterPlayer/StarterPlayerScripts/AchievementFixLoader.client.lua"
+				},
+				"Client": {
+					"$path": "src/StarterPlayer/StarterPlayerScripts/Client.client.lua"
 				}
 			}
 		},
@@ -99,6 +126,9 @@
 			},
 			"HUD": {
 				"$path": "src/StarterGui/HUD.client.lua"
+			},
+			"ClassSelectionUI": {
+				"$path": "src/StarterGui/ClassSelectionUI.client.lua"
 			}
 		}
 	}

@@ -16,6 +16,9 @@ local LootDrop = Remotes:WaitForChild("LootDrop") :: RemoteEvent
 -- AI State Machine Typen
 export type EnemyAI = "Aggressive" | "Defensive" | "Balanced" | "Ranged" | "Caster"
 
+-- Define state type separately for easier comparison
+export type EnemyStateType = "Idle" | "Chase" | "Attack" | "Retreat" | "Dead"
+
 export type EnemyState = {
     Model: Model,
     Humanoid: Humanoid,
@@ -33,7 +36,7 @@ export type EnemyState = {
 
     -- AI State
     AIType: EnemyAI,
-    CurrentState: "Idle" | "Chase" | "Attack" | "Retreat" | "Dead",
+    CurrentState: EnemyStateType,
     Target: Player?,
     LastAttackTime: number,
     LastStateChange: number,
@@ -75,25 +78,31 @@ local function findNearestPlayer(enemyPos: Vector3, arenaId: string, maxRange: n
 end
 
 local function moveTowards(enemy: EnemyState, targetPosition: Vector3)
+    if not enemy.HRP then
+        return
+    end
+
     local direction = (targetPosition - enemy.HRP.Position)
     direction = Vector3.new(direction.X, 0, direction.Z).Unit -- Nur horizontal bewegen
+    -- Handle zero direction to prevent NaN
+    if direction.Magnitude < 0.001 then
+        return
+    end
 
-    -- Setze Bewegung
+    -- Setze Bewegung mit BodyVelocity
     local bodyVelocity = enemy.HRP:FindFirstChild("BodyVelocity") :: BodyVelocity?
     if not bodyVelocity then
-        bodyVelocity = Instance.new("BodyVelocity")
-        bodyVelocity.MaxForce = Vector3.new(4000, 0, 4000)
-        bodyVelocity.Parent = enemy.HRP
+        local newBodyVelocity = Instance.new("BodyVelocity") :: BodyVelocity
+        newBodyVelocity.MaxForce = Vector3.new(4000, 0, 4000)
+        newBodyVelocity.Parent = enemy.HRP
+        bodyVelocity = newBodyVelocity
     end
 
-    if bodyVelocity then
-        bodyVelocity.Velocity = direction * enemy.MoveSpeed
-    end
+    -- Cast to non-nullable type since we know it can't be nil at this point
+    (bodyVelocity :: BodyVelocity).Velocity = direction * enemy.MoveSpeed
 
     -- Rotiere zur Zielrichtung
-    if direction.Magnitude > 0 then
-        enemy.HRP.CFrame = CFrame.lookAt(enemy.HRP.Position, enemy.HRP.Position + direction)
-    end
+    enemy.HRP.CFrame = CFrame.lookAt(enemy.HRP.Position, enemy.HRP.Position + direction)
 end
 
 local function stopMovement(enemy: EnemyState)
@@ -167,7 +176,7 @@ local function updateEnemyAI(enemy: EnemyState, _dt: number)
     local nearestPlayer = findNearestPlayer(enemy.HRP.Position, enemy.ArenaId, enemy.AggroRange)
 
     -- State Machine basierend auf AI-Typ
-    if enemy.AIType == "Aggressive" then
+    if enemy.AIType == ("Aggressive" :: EnemyAI) then
         if nearestPlayer and enemy.CurrentState ~= "Dead" then
             enemy.Target = nearestPlayer
 
@@ -190,15 +199,18 @@ local function updateEnemyAI(enemy: EnemyState, _dt: number)
                 end
             end
         else
-            if enemy.CurrentState ~= "Idle" then
+            if
+                enemy.CurrentState ~= ("Idle" :: EnemyStateType)
+                and enemy.CurrentState ~= ("Dead" :: EnemyStateType)
+            then
                 enemy.CurrentState = "Idle"
                 enemy.LastStateChange = now
                 stopMovement(enemy)
             end
             enemy.Target = nil
         end
-    elseif enemy.AIType == "Ranged" then
-        if nearestPlayer and enemy.CurrentState ~= "Dead" then
+    elseif enemy.AIType == ("Ranged" :: EnemyAI) then
+        if nearestPlayer and enemy.CurrentState ~= ("Dead" :: EnemyStateType) then
             enemy.Target = nearestPlayer
             local targetHRP = nearestPlayer.Character
                 and nearestPlayer.Character:FindFirstChild("HumanoidRootPart") :: BasePart?
@@ -208,7 +220,7 @@ local function updateEnemyAI(enemy: EnemyState, _dt: number)
 
                 if distance <= enemy.AttackRange and distance > enemy.AttackRange * 0.5 then
                     -- Optimale Range: Angreifen
-                    if enemy.CurrentState ~= "Attack" then
+                    if enemy.CurrentState ~= ("Attack" :: EnemyStateType) then
                         enemy.CurrentState = "Attack"
                         enemy.LastStateChange = now
                         stopMovement(enemy)
@@ -216,7 +228,7 @@ local function updateEnemyAI(enemy: EnemyState, _dt: number)
                     attackTarget(enemy, nearestPlayer)
                 elseif distance < enemy.AttackRange * 0.5 then
                     -- Zu nah: Rückzug
-                    if enemy.CurrentState ~= "Retreat" then
+                    if enemy.CurrentState ~= ("Retreat" :: EnemyStateType) then
                         enemy.CurrentState = "Retreat"
                         enemy.LastStateChange = now
                     end
@@ -225,24 +237,36 @@ local function updateEnemyAI(enemy: EnemyState, _dt: number)
                     moveTowards(enemy, retreatTarget)
                 else
                     -- Zu weit: Verfolgen
-                    if enemy.CurrentState ~= "Chase" then
+                    if enemy.CurrentState ~= ("Chase" :: EnemyStateType) then
                         enemy.CurrentState = "Chase"
                         enemy.LastStateChange = now
                     end
                     moveTowards(enemy, targetHRP.Position)
                 end
+            else
+                if
+                    enemy.CurrentState ~= ("Idle" :: EnemyStateType)
+                    and enemy.CurrentState ~= ("Dead" :: EnemyStateType)
+                then
+                    enemy.CurrentState = "Idle"
+                    enemy.LastStateChange = now
+                    stopMovement(enemy)
+                end
             end
         else
-            if enemy.CurrentState ~= "Idle" then
+            if
+                enemy.CurrentState ~= ("Idle" :: EnemyStateType)
+                and enemy.CurrentState ~= ("Dead" :: EnemyStateType)
+            then
                 enemy.CurrentState = "Idle"
                 enemy.LastStateChange = now
                 stopMovement(enemy)
             end
             enemy.Target = nil
         end
-    elseif enemy.AIType == "Defensive" then
+    elseif enemy.AIType == ("Defensive" :: EnemyAI) then
         -- Defensive AI: Angriff nur wenn angegriffen
-        if nearestPlayer and enemy.CurrentState ~= "Dead" then
+        if nearestPlayer and enemy.CurrentState ~= ("Dead" :: EnemyStateType) then
             local targetHRP = nearestPlayer.Character
                 and nearestPlayer.Character:FindFirstChild("HumanoidRootPart") :: BasePart?
             if targetHRP then
@@ -251,22 +275,25 @@ local function updateEnemyAI(enemy: EnemyState, _dt: number)
                 -- Nur angreifen wenn Spieler sehr nah ist
                 if distance <= enemy.AttackRange * 0.7 then
                     enemy.Target = nearestPlayer
-                    if enemy.CurrentState ~= "Attack" then
+                    if enemy.CurrentState ~= ("Attack" :: EnemyStateType) then
                         enemy.CurrentState = "Attack"
                         enemy.LastStateChange = now
                         stopMovement(enemy)
                     end
                     attackTarget(enemy, nearestPlayer)
                 else
-                    if enemy.CurrentState ~= "Idle" then
+                    if
+                        enemy.CurrentState ~= ("Idle" :: EnemyStateType)
+                        and enemy.CurrentState ~= ("Dead" :: EnemyStateType)
+                    then
                         enemy.CurrentState = "Idle"
                         enemy.LastStateChange = now
                         stopMovement(enemy)
                     end
                 end
             end
-        else
-            if enemy.CurrentState ~= "Idle" then
+        elseif enemy.CurrentState ~= ("Dead" :: EnemyStateType) then
+            if enemy.CurrentState ~= ("Idle" :: EnemyStateType) then
                 enemy.CurrentState = "Idle"
                 enemy.LastStateChange = now
                 stopMovement(enemy)
@@ -278,7 +305,7 @@ end
 
 -- Gegner-Erstellung
 local function createEnemyModel(enemyType: string, position: Vector3, arenaId: string): Model?
-    local enemyConfig = ArenaConstants.ENEMIES[enemyType]
+    local enemyConfig = (ArenaConstants.ENEMIES :: { [string]: any })[enemyType]
     if not enemyConfig then
         warn(string.format("Unknown enemy type: %s", enemyType))
         return nil
@@ -315,12 +342,12 @@ local function createEnemyModel(enemyType: string, position: Vector3, arenaId: s
 
     -- Visuelle Kennzeichnung
     local billboard = Instance.new("BillboardGui")
-    billboard.Size = UDim2.new(0, 100, 0, 50)
+    billboard.Size = UDim2.fromOffset(100, 50)
     billboard.StudsOffset = Vector3.new(0, 3, 0)
     billboard.Parent = hrp
 
     local nameLabel = Instance.new("TextLabel")
-    nameLabel.Size = UDim2.new(1, 0, 0.6, 0)
+    nameLabel.Size = UDim2.fromScale(1, 0.6)
     nameLabel.BackgroundTransparency = 1
     nameLabel.Text = enemyType
     nameLabel.TextColor3 = Color3.new(1, 1, 1)
@@ -329,15 +356,15 @@ local function createEnemyModel(enemyType: string, position: Vector3, arenaId: s
     nameLabel.Parent = billboard
 
     local healthBar = Instance.new("Frame")
-    healthBar.Size = UDim2.new(0.8, 0, 0.2, 0)
-    healthBar.Position = UDim2.new(0.1, 0, 0.7, 0)
+    healthBar.Size = UDim2.fromScale(0.8, 0.2)
+    healthBar.Position = UDim2.fromScale(0.1, 0.7)
     healthBar.BackgroundColor3 = Color3.new(0.8, 0.2, 0.2)
     healthBar.BorderSizePixel = 0
     healthBar.Parent = billboard
 
     local healthFill = Instance.new("Frame")
     healthFill.Name = "HealthFill"
-    healthFill.Size = UDim2.new(1, 0, 1, 0)
+    healthFill.Size = UDim2.fromScale(1, 1)
     healthFill.Position = UDim2.new(0, 0, 0, 0)
     healthFill.BackgroundColor3 = Color3.new(0.2, 0.8, 0.2)
     healthFill.BorderSizePixel = 0
@@ -356,7 +383,7 @@ local function createEnemyModel(enemyType: string, position: Vector3, arenaId: s
 end
 
 local function spawnEnemy(enemyType: string, position: Vector3, arenaId: string): EnemyState?
-    local enemyConfig = ArenaConstants.ENEMIES[enemyType]
+    local enemyConfig = (ArenaConstants.ENEMIES :: { [string]: any })[enemyType]
     if not enemyConfig then
         return nil
     end
@@ -434,7 +461,7 @@ RunService.Heartbeat:Connect(function()
                 local healthFill = healthBar:FindFirstChild("HealthFill") :: Frame?
                 if healthFill then
                     local healthPercent = math.max(0, enemy.Health / enemy.MaxHealth)
-                    healthFill.Size = UDim2.new(healthPercent, 0, 1, 0)
+                    healthFill.Size = UDim2.fromScale(healthPercent, 1)
                 end
             end
         end

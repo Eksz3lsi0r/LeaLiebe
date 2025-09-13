@@ -5,8 +5,8 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
 
-local _ArenaConstants = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("ArenaConstants"))
 local Config = require(ReplicatedStorage:WaitForChild("Config"))
+local _ArenaConstants = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("ArenaConstants"))
 
 -- Roblox Gravity global setzen (optional; Studio Default ist bereits 196.2)
 Workspace.Gravity = Config.GRAVITY
